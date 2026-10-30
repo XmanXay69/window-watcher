@@ -71,7 +71,11 @@ may record the screen, and Window Watcher shows instructions:
 3. Type a question at the bottom and press Return.
 4. Optional: type standing instructions (one per line) in the box and click
    **Save Instructions**. Tick **Read alerts aloud** to hear alerts.
-5. **Pause** stops the automatic screenshots and alerts. **Change Window…**
+5. Click **Show Chat Window** for a separate chat that floats on top of other
+   apps. Answers are labeled with the question they answer (Q1, Q2…). Select
+   any text to copy it, click **Copy** next to a message, or click **Copy All**
+   for the whole conversation. **Hide** (or the window's close button) hides it.
+6. **Pause** stops the automatic screenshots and alerts. **Change Window…**
    switches to a different window.
 
 To try it safely first, run the practice window in a second Terminal window:

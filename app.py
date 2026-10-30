@@ -76,9 +76,79 @@ class ChatMessage:
     role: str
     text: str
     when: float = field(default_factory=time.time)
+    number: int = 0          # questions are numbered Q1, Q2, ...
+    reply_to: object = None  # for answers: the question (ChatMessage) it answers
 
     def time_text(self):
         return clock(self.when)
+
+
+class ChatView(QTextBrowser):
+    """The chat transcript. You can select and copy any text, and each
+    message has a "Copy" link that copies just that message."""
+
+    def __init__(self, messages):
+        super().__init__()
+        self.messages = messages  # the app's list of ChatMessages
+        self.setOpenLinks(False)  # we handle link clicks ourselves
+        self.anchorClicked.connect(self.on_link_clicked)
+
+    def on_link_clicked(self, url):
+        # Links look like "copy:5", meaning "copy message number 5".
+        if url.scheme() == "copy":
+            QApplication.clipboard().setText(self.messages[int(url.path())].text)
+
+    def add_html(self, html):
+        self.append(html)
+        scrollbar = self.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+
+class FloatingChat(QWidget):
+    """A separate chat window that stays on top of other apps, so you can
+    keep it next to the window you're watching. Closing it just hides it."""
+
+    def __init__(self, main_window):
+        super().__init__(None, Qt.Window | Qt.WindowStaysOnTopHint)
+        self.main_window = main_window
+        self.setWindowTitle("Window Watcher Chat")
+        self.resize(420, 520)
+
+        self.chat_view = ChatView(main_window.chat)
+        self.question_box = QLineEdit()
+        self.question_box.setPlaceholderText("Ask about the window…")
+        self.question_box.returnPressed.connect(self.on_ask)
+        ask_button = QPushButton("Ask")
+        ask_button.clicked.connect(self.on_ask)
+        copy_all_button = QPushButton("Copy All")
+        copy_all_button.clicked.connect(main_window.copy_all_chat)
+        hide_button = QPushButton("Hide")
+        hide_button.clicked.connect(self.hide)
+
+        ask_row = QHBoxLayout()
+        ask_row.addWidget(self.question_box, 1)
+        ask_row.addWidget(ask_button)
+        bottom_row = QHBoxLayout()
+        bottom_row.addWidget(copy_all_button)
+        bottom_row.addStretch()
+        bottom_row.addWidget(hide_button)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.chat_view, 1)
+        layout.addLayout(ask_row)
+        layout.addLayout(bottom_row)
+
+    def on_ask(self):
+        self.main_window.ask(self.question_box.text())
+        self.question_box.clear()
+
+    def hideEvent(self, event):
+        self.main_window.update_chat_button()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        self.main_window.update_chat_button()
+        super().showEvent(event)
 
 
 @dataclass(eq=False)
@@ -111,6 +181,7 @@ class ClaudeJob:
     files_to_delete: list
     schema: dict = None
     checked_frame: Frame = None  # for checks: the screenshot Claude looked at
+    question: ChatMessage = None  # for questions: the message being answered
     answer: object = None
     error: str = None
 
@@ -225,6 +296,7 @@ class MainWindow(QMainWindow):
         self.job_count = 0
         self.pending_questions = []   # ChatMessages waiting for Claude
         self.chat = []                # every ChatMessage, oldest first
+        self.question_count = 0
 
         self.instructions = []        # standing instructions, one per line
         self.check_needed = False     # the screen changed since the last check
@@ -277,9 +349,12 @@ class MainWindow(QMainWindow):
         self.pause_button.clicked.connect(self.on_pause)
         self.change_button = QPushButton("Change Window…")
         self.change_button.clicked.connect(self.on_change_window)
+        self.chat_button = QPushButton("Show Chat Window")
+        self.chat_button.clicked.connect(self.toggle_floating_chat)
         top_buttons = QHBoxLayout()
         top_buttons.addWidget(self.pause_button)
         top_buttons.addWidget(self.change_button)
+        top_buttons.addWidget(self.chat_button)
         top_buttons.addStretch()
 
         info = QVBoxLayout()
@@ -313,8 +388,9 @@ class MainWindow(QMainWindow):
         instructions_row.addLayout(instruction_side)
 
         # Bottom: the chat and the question box.
-        self.chat_view = QTextBrowser()
-        self.chat_view.setOpenExternalLinks(True)
+        self.chat_view = ChatView(self.chat)
+        # The pop-out chat window (hidden until you click "Show Chat Window").
+        self.floating_chat = FloatingChat(self)
         self.question_box = QLineEdit()
         self.question_box.setPlaceholderText("Ask about the window, e.g. “What just changed?”")
         self.question_box.returnPressed.connect(self.on_ask)
@@ -352,35 +428,71 @@ class MainWindow(QMainWindow):
 
     # --- Chat ----------------------------------------------------------------
 
-    def add_chat(self, role, text):
-        """Add a message to the chat and show it."""
-        message = ChatMessage(role, text)
+    def add_chat(self, role, text, reply_to=None):
+        """Add a message to the chat and show it in both chat views."""
+        message = ChatMessage(role, text, reply_to=reply_to)
+        if role == "user":
+            self.question_count += 1
+            message.number = self.question_count
+        index = len(self.chat)
         self.chat.append(message)
 
         body = escape(text).replace("\n", "<br>")
-        stamp = f'<span style="color:{self.gray};">{message.time_text()}</span>'
         if role == "note":
             html = f'<p style="color:{self.gray};">{body}</p>'
         else:
             name, color = {
-                "user": ("You", None),
+                "user": (f"You · Q{message.number}", None),
                 "assistant": ("Claude", self.accent),
                 "alert": ("Alert", self.accent),
                 "error": ("Problem", self.red),
             }[role]
             name_html = f'<b style="color:{color};">{name}</b>' if color else f"<b>{name}</b>"
-            html = f"<p>{name_html} &nbsp;{stamp}<br>{body}</p>"
-        self.chat_view.append(html)
-        scrollbar = self.chat_view.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+            # Answers say which question they answer, e.g. "↳ Q2: What's my score?"
+            answering = ""
+            if reply_to is not None:
+                short = escape(reply_to.text[:60] + ("…" if len(reply_to.text) > 60 else ""))
+                answering = f'<br><span style="color:{self.gray};">↳ Q{reply_to.number}: {short}</span>'
+            details = (f'<span style="color:{self.gray};">{message.time_text()} · '
+                       f'<a href="copy:{index}">Copy</a></span>')
+            html = f"<p>{name_html} &nbsp;{details}{answering}<br>{body}</p>"
+        self.chat_view.add_html(html)
+        self.floating_chat.chat_view.add_html(html)
         return message
 
+    def copy_all_chat(self):
+        """Copy the whole conversation as plain text."""
+        lines = []
+        for m in self.chat:
+            if m.role == "user":
+                lines.append(f"[{m.time_text()}] You (Q{m.number}): {m.text}")
+            elif m.role in ("assistant", "alert", "error"):
+                label = {"assistant": "Claude", "alert": "Alert", "error": "Problem"}[m.role]
+                about = f" (answer to Q{m.reply_to.number})" if m.reply_to else ""
+                lines.append(f"[{m.time_text()}] {label}{about}: {m.text}")
+        QApplication.clipboard().setText("\n\n".join(lines))
+
+    def toggle_floating_chat(self):
+        if self.floating_chat.isVisible():
+            self.floating_chat.hide()
+        else:
+            self.floating_chat.show()
+            self.floating_chat.raise_()
+
+    def update_chat_button(self):
+        visible = self.floating_chat.isVisible()
+        self.chat_button.setText("Hide Chat Window" if visible else "Show Chat Window")
+
     def on_ask(self):
-        """You pressed Ask (or Return)."""
-        question = self.question_box.text().strip()
+        """You pressed Ask (or Return) in the main window."""
+        self.ask(self.question_box.text())
+        self.question_box.clear()
+
+    def ask(self, question):
+        """Send a question (from either chat box) to Claude."""
+        question = question.strip()
         if not question:
             return
-        self.question_box.clear()
         if self.window is None:
             self.add_chat("error", "Choose a window to watch first (click “Change Window…”).")
             return
@@ -579,7 +691,7 @@ class MainWindow(QMainWindow):
             change_log=self.change_log,
             chat_history=chat_so_far[-CHAT_MESSAGES_SENT:],
         )
-        self.run_job(ClaudeJob("question", prompt, self.generation, [now_copy, before_copy]))
+        self.run_job(ClaudeJob("question", prompt, self.generation, [now_copy, before_copy], question=message))
 
     def start_check(self):
         self.job_count += 1
@@ -627,9 +739,9 @@ class MainWindow(QMainWindow):
         stale = job.generation != self.generation  # you switched windows meanwhile
         if job.kind == "question":
             if job.error:
-                self.add_chat("error", job.error)
+                self.add_chat("error", job.error, reply_to=job.question)
             else:
-                self.add_chat("assistant", job.answer or "(Claude sent an empty answer.)")
+                self.add_chat("assistant", job.answer or "(Claude sent an empty answer.)", reply_to=job.question)
         elif job.error or stale:
             delete_file(job.checked_frame.path)
             if job.error:
@@ -699,6 +811,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.capture_timer.stop()
         claude_bridge.stop_running_call()
+        self.floating_chat.close()
         shutil.rmtree(self.frames_dir, ignore_errors=True)
         super().closeEvent(event)
 
