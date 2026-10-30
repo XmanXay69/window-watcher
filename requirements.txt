@@ -1,0 +1,6 @@
+# The window toolkit (buttons, chat box, preview)
+PySide6-Essentials~=6.12
+# Lets Python use Apple's ScreenCaptureKit and Quartz (window screenshots)
+pyobjc-framework-ScreenCaptureKit~=12.2
+pyobjc-framework-Quartz~=12.2
+pyobjc-framework-Cocoa~=12.2
