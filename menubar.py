@@ -4,7 +4,8 @@ screen with the clock).
 
 The app starts "asleep": just this icon, no windows, no screenshots, no
 Claude. Clicking the icon wakes it up (pick a window, start watching). While
-it's awake, clicking the icon opens a small menu instead.
+it's awake, clicking the icon opens a small menu instead. Window Watcher has
+no Dock icon or menus at the top of the screen, so everything lives here.
 """
 
 import sys
@@ -74,6 +75,13 @@ class MenuBarIcon(QSystemTrayIcon):
         self.menu.addAction("Show Window Watcher", main_window.bring_to_front)
         self.menu.addAction("Show Chat  (⌘⇧C)", main_window.on_global_shortcut)
         self.menu.addAction("Change Window…", main_window.change_window_from_menu_bar)
+        # The programmable buttons (⌘1–⌘4) and their editor.
+        buttons_menu = self.menu.addMenu("Quick Buttons")
+        for action in main_window.quick_prompt_actions:
+            buttons_menu.addAction(action)
+        buttons_menu.addSeparator()
+        buttons_menu.addAction("Edit Buttons…", main_window.edit_quick_prompts)
+        self.menu.addAction(main_window.global_shortcut_action)  # "⌘⇧C Works in Other Apps"
         self.menu.addSeparator()
         self.menu.addAction("Go to Sleep", main_window.go_dormant)
         self.login_action = self.menu.addAction("Open at Login", self.toggle_open_at_login)

@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION=1.9.0
+VERSION=1.10.0
 
 # PyInstaller bundles Python, Qt and PyObjC into a normal Mac app.
 .venv/bin/pip install -q pyinstaller

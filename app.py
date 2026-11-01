@@ -77,6 +77,21 @@ QUICK_PROMPT_DEFAULTS = [
 # Small data holders
 # ---------------------------------------------------------------------------
 
+def set_space_behavior(widget, *behaviors):
+    """Tell macOS which desktops (Spaces) a window may appear on. Window
+    Watcher uses this so its windows open over whatever you're looking at,
+    even an app in full-screen mode, instead of jumping to another desktop."""
+    try:
+        import objc
+        ns_window = objc.objc_object(c_void_p=int(widget.winId())).window()
+        flags = ns_window.collectionBehavior()
+        for behavior in behaviors:
+            flags |= behavior
+        ns_window.setCollectionBehavior_(flags)
+    except Exception as error:  # a nice-to-have; never crash over it
+        print("Couldn't set where the window appears:", error)
+
+
 def rounded(pixmap, radius):
     """A copy of a picture with rounded corners."""
     ratio = pixmap.devicePixelRatio()
@@ -257,28 +272,15 @@ class FloatingChat(QWidget):
 
     def hideEvent(self, event):
         self.main_window.update_chat_button()
-        self.main_window.restore_dock_icon()
         super().hideEvent(event)
 
     def showEvent(self, event):
         self.main_window.update_chat_button()
         super().showEvent(event)
-        self.show_on_every_desktop()
-
-    def show_on_every_desktop(self):
-        """Let this window appear on every desktop (Space), including over an
-        app in full-screen mode, so it can sit on top of a full-screen game.
-        These are standard macOS window settings ("collection behaviors")."""
-        try:
-            import objc
-            from AppKit import (NSWindowCollectionBehaviorCanJoinAllSpaces,
-                                NSWindowCollectionBehaviorFullScreenAuxiliary)
-            ns_window = objc.objc_object(c_void_p=int(self.winId())).window()
-            ns_window.setCollectionBehavior_(ns_window.collectionBehavior()
-                                             | NSWindowCollectionBehaviorCanJoinAllSpaces
-                                             | NSWindowCollectionBehaviorFullScreenAuxiliary)
-        except Exception as error:  # a nice-to-have; never crash over it
-            print("Couldn't show the chat on every desktop:", error)
+        # Show on every desktop, including over full-screen apps (like a game).
+        from AppKit import NSWindowCollectionBehaviorCanJoinAllSpaces, NSWindowCollectionBehaviorFullScreenAuxiliary
+        set_space_behavior(self, NSWindowCollectionBehaviorCanJoinAllSpaces,
+                           NSWindowCollectionBehaviorFullScreenAuxiliary)
 
 
 @dataclass(eq=False)
@@ -356,31 +358,34 @@ class WindowPicker(QDialog):
         self.chosen = None
         self.under_rect = under_rect
 
-        # Everything sits on a "panel", so the dropdown style can round its corners.
+        # Same look as the main window (colors and styles from theme.py).
+        self.setStyleSheet(theme.stylesheet(theme.colors(self.palette())))
+
+        # Everything sits on a "panel", so the dropdown can have round corners.
         panel = QFrame()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(panel)
         layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
 
         if under_rect is not None:
             # Popup: no title bar, closes when you click elsewhere.
             self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
             self.setAttribute(Qt.WA_TranslucentBackground)  # lets the corners be round
-            colors = self.palette()
-            panel.setObjectName("panel")
-            panel.setStyleSheet(
-                f"#panel {{ background: {colors.color(QPalette.Window).name()};"
-                f" border: 1px solid {colors.color(QPalette.Mid).name()}; border-radius: 12px; }}")
-            layout.setContentsMargins(14, 12, 14, 12)
-            title = QLabel("Window Watcher")
-            title.setStyleSheet("font-weight: 600; font-size: 14px;")
-            layout.addWidget(title)
-            self.resize(420, 360)
+            panel.setObjectName("card")  # a rounded card, like in the main window
+            self.resize(430, 380)
         else:
-            self.resize(540, 420)
+            panel.setObjectName("root")
+            self.resize(540, 440)
 
-        layout.addWidget(QLabel("Which window should Window Watcher look at?"))
+        caption = QLabel("WINDOW WATCHER")
+        caption.setObjectName("caption")
+        title = QLabel("Which window should I watch?")
+        title.setStyleSheet("font-size: 15px; font-weight: 600;")
+        layout.addWidget(caption)
+        layout.addWidget(title)
 
         self.list = QListWidget()
         self.list.itemDoubleClicked.connect(self.accept)
@@ -392,6 +397,7 @@ class WindowPicker(QDialog):
         cancel_button = QPushButton("Cancel")
         cancel_button.clicked.connect(self.reject)
         self.watch_button = QPushButton("Watch This Window")
+        self.watch_button.setObjectName("primary")
         self.watch_button.setDefault(True)
         self.watch_button.clicked.connect(self.accept)
         buttons.addWidget(refresh_button)
@@ -529,33 +535,26 @@ class MainWindow(QMainWindow):
         self.setWindowFlag(Qt.ExpandedClientAreaHint, True)
         self.setWindowFlag(Qt.NoTitleBarBackgroundHint, True)
 
-        # Menu bar: View > Show/Hide Chat Window, with the keyboard shortcut
-        # Cmd+Shift+C. ("Ctrl" in Qt means the Command key on a Mac.)
-        # ApplicationShortcut makes it work in both of the app's windows.
+        # Keyboard shortcuts. Window Watcher is a menu bar app with no menus at
+        # the top of the screen, so these "actions" are attached to its windows
+        # (see attach_shortcuts) and also listed in the eye's menu (menubar.py).
+        # ("Ctrl" in Qt means the Command key on a Mac.)
         self.chat_action = QAction("Show Chat Window", self)
         self.chat_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         self.chat_action.setShortcutContext(Qt.ApplicationShortcut)
         self.chat_action.triggered.connect(self.toggle_floating_chat)
-        view_menu = self.menuBar().addMenu("View")
-        view_menu.addAction(self.chat_action)
         # ⌘⇧C can also work while other apps are in front (see hotkeys.py).
         self.global_shortcut_action = QAction("⌘⇧C Works in Other Apps", self)
         self.global_shortcut_action.setCheckable(True)
         self.global_shortcut_action.toggled.connect(self.set_global_shortcut)
-        view_menu.addAction(self.global_shortcut_action)
-
-        # Menu bar: Buttons > (each programmable button), with Cmd+1 to Cmd+4.
-        buttons_menu = self.menuBar().addMenu("Buttons")
+        # The programmable buttons, with Cmd+1 to Cmd+4.
         self.quick_prompt_actions = []
         for number in range(len(QUICK_PROMPT_DEFAULTS)):
             action = QAction(self)
             action.setShortcut(QKeySequence(f"Ctrl+{number + 1}"))
             action.setShortcutContext(Qt.ApplicationShortcut)
             action.triggered.connect(lambda checked=False, n=number: self.send_quick_prompt(n))
-            buttons_menu.addAction(action)
             self.quick_prompt_actions.append(action)
-        buttons_menu.addSeparator()
-        buttons_menu.addAction("Edit Buttons…", self.edit_quick_prompts)
 
         # --- Header card: live preview, window name, status, buttons ---
         self.preview = QLabel("No window yet")
@@ -687,10 +686,18 @@ class MainWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
         self.resize(820, 800)
+        self.attach_shortcuts(self)
+        self.attach_shortcuts(self.floating_chat)
         self.apply_theme()
         self.refresh_quick_prompts()
 
     # --- Look ------------------------------------------------------------------
+
+    def attach_shortcuts(self, window):
+        """Make ⌘⇧C and ⌘1–⌘4 work while this window is in front."""
+        window.addAction(self.chat_action)
+        for action in self.quick_prompt_actions:
+            window.addAction(action)
 
     def make_card(self):
         """A rounded panel that groups related things (styled in theme.py)."""
@@ -733,19 +740,15 @@ class MainWindow(QMainWindow):
         self.activate_app()  # so the dropdown gets the keyboard
         # Screen Recording is only checked now, when you ask to start.
         if not capture.can_capture_screen() and not ask_for_screen_permission():
-            self.set_dock_icon(False)
             return
         icon_rect = self.menu_icon.geometry()  # where the eye is in the menu bar
         picker = WindowPicker(self, under_rect=icon_rect if icon_rect.isValid() else None)
         if not (picker.exec() and picker.chosen):
-            self.set_dock_icon(False)  # cancelled: stay asleep
-            return
+            return  # cancelled: stay asleep
 
         self.dormant = False
         self.menu_icon.update_menu()
-        self.set_dock_icon(True)
-        self.show()
-        self.raise_()
+        self.bring_to_front()
         self.capture_timer.start(int(CAPTURE_EVERY_SECONDS * 1000))
         self.start_watching(picker.chosen)
         if not self.claude_checked:
@@ -776,14 +779,13 @@ class MainWindow(QMainWindow):
         self.preview.setText("Asleep")
         self.floating_chat.hide()
         self.hide()
-        self.set_dock_icon(False)
         self.add_chat("note", "Went to sleep. Click the eye in the menu bar to watch a window again.")
         self.update_status()
         if self.menu_icon is not None:
             self.menu_icon.update_menu()
 
     def bring_to_front(self):
-        self.set_dock_icon(True)
+        """Show the main window over whatever you're looking at."""
         self.show()
         self.raise_()
         self.activate_app()
@@ -793,12 +795,20 @@ class MainWindow(QMainWindow):
         self.bring_to_front()
         self.on_change_window()
 
-    def set_dock_icon(self, show):
-        """Show the Dock icon and app menus while awake; hide them while asleep."""
-        from AppKit import NSApp, NSApplicationActivationPolicyAccessory, NSApplicationActivationPolicyRegular
-        policy = NSApplicationActivationPolicyRegular if show else NSApplicationActivationPolicyAccessory
-        if NSApp.activationPolicy() != policy:
-            NSApp.setActivationPolicy_(policy)
+    def make_menu_bar_app(self):
+        """Run as an "accessory" app: no Dock icon and no menus at the top of
+        the screen, just the eye. This is also what lets macOS show the app's
+        windows over another app that's in full-screen mode (like Spotlight)."""
+        from AppKit import NSApp, NSApplicationActivationPolicyAccessory
+        NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Open on the desktop you're on (even over a full-screen app) instead of
+        # jumping back to the desktop where the window was last.
+        from AppKit import NSWindowCollectionBehaviorFullScreenAuxiliary, NSWindowCollectionBehaviorMoveToActiveSpace
+        set_space_behavior(self, NSWindowCollectionBehaviorMoveToActiveSpace,
+                           NSWindowCollectionBehaviorFullScreenAuxiliary)
 
     def activate_app(self):
         from AppKit import NSApp
@@ -919,12 +929,7 @@ class MainWindow(QMainWindow):
         front = NSWorkspace.sharedWorkspace().frontmostApplication()
         if front is not None and front.processIdentifier() != os.getpid():
             self.previous_app = front
-        # While the chat is up, run as an "accessory" app (like Spotlight does).
-        # macOS only lets accessory apps show a window over another app that's
-        # in full-screen mode. The Dock icon comes back when the chat hides.
-        from AppKit import NSApplicationActivationPolicyAccessory
-        NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-        QTimer.singleShot(150, self.bring_up_floating_chat)  # give macOS a moment to switch
+        self.bring_up_floating_chat()
 
     def bring_up_floating_chat(self):
         """Show the chat in front, ready to type in."""
@@ -937,12 +942,6 @@ class MainWindow(QMainWindow):
             NSApp.activateIgnoringOtherApps_(True)
         self.floating_chat.activateWindow()
         self.floating_chat.question_box.setFocus()
-
-    def restore_dock_icon(self):
-        """Switch back to a normal app (with a Dock icon) after the shortcut's
-        accessory mode. Called whenever the chat window hides. While asleep,
-        the app stays hidden in the menu bar."""
-        self.set_dock_icon(not self.dormant)
 
     def hide_floating_chat(self):
         """Hide the chat and, if ⌘⇧C opened it, go back to the app you were in."""
@@ -1469,7 +1468,7 @@ def main():
     window = MainWindow()  # created hidden and asleep
     window.menu_icon = menubar.MenuBarIcon(window)
     window.menu_icon.show()
-    window.set_dock_icon(False)  # asleep: menu bar icon only
+    window.make_menu_bar_app()  # just the eye in the menu bar, no Dock icon
     app.aboutToQuit.connect(window.shutdown)
     if "--wake" in sys.argv:  # reopened after granting Screen Recording
         QTimer.singleShot(300, window.wake)

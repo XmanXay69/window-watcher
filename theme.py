@@ -85,6 +85,18 @@ def stylesheet(c):
         }}
         QCheckBox {{ color: {c['secondary']}; }}
 
+        QListWidget {{
+            background: {c['field']};
+            color: {c['text']};
+            border: 1px solid {c['border']};
+            border-radius: 10px;
+            padding: 4px;
+            outline: none;
+        }}
+        QListWidget::item {{ padding: 7px 10px; border-radius: 7px; }}
+        QListWidget::item:hover {{ background: {c['button']}; }}
+        QListWidget::item:selected {{ background: {c['accent_soft']}; color: {c['text']}; }}
+
         QScrollBar:vertical {{ background: transparent; width: 8px; margin: 2px; }}
         QScrollBar::handle:vertical {{ background: {c['button_hover']}; border-radius: 3px; min-height: 24px; }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}

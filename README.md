@@ -75,18 +75,22 @@ may record the screen, and Window Watcher shows instructions:
 2. Click the eye (or press **⌘⇧C**). Window Watcher wakes up, checks Screen
    Recording permission, and drops down a panel under the eye asking which
    window to watch (click anywhere else to close it and stay asleep). Pick one and click
-   **Watch This Window**. While it's awake, clicking the eye opens a menu: Show
-   Window Watcher, Show Chat, Change Window, **Go to Sleep**, **Open at Login**
-   (keeps the eye in the menu bar after a restart), and **Quit**. Closing the
-   main window also puts it to sleep: screenshots stop and are deleted, while
-   your chat, instructions, documents and buttons are kept.
+   **Watch This Window**. The main window opens right where you are, even over
+   an app in full-screen mode, instead of jumping to another desktop.
+   Window Watcher is a menu bar app: it never has a Dock icon or menus at the
+   top of the screen (and isn't in ⌘Tab). Everything is in the eye's menu
+   while it's awake: Show Window Watcher, Show Chat, Change Window, **Quick
+   Buttons** (and Edit Buttons), **⌘⇧C Works in Other Apps**, **Go to Sleep**,
+   **Open at Login** (keeps the eye in the menu bar after a restart), and
+   **Quit**. Closing the main window also puts it to sleep: screenshots stop
+   and are deleted, while your chat, instructions, documents and buttons are kept.
 3. Type a question at the bottom and press Return. Or click one of the four
    programmable buttons above the question box (like **What's the answer to
    this?** or **Explain this**) to send that message in one click, or press
    **⌘1**–**⌘4**. Click **Edit Buttons…** to type your own text into them.
    Your buttons are saved for next time.
 4. Optional: type standing instructions (one per line) in the box and click
-   **Save Instructions**. Tick **Read alerts aloud** to hear alerts.
+   **Save**. Tick **Read alerts aloud** to hear alerts.
 5. Click **Show Chat Window** for a separate chat that floats on top of other
    apps. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
@@ -95,12 +99,11 @@ may record the screen, and Window Watcher shows instructions:
    another app or game is in front. Hiding it takes you back to the app you
    were using. The chat window shows up on every desktop, including over apps
    in full-screen mode, so you can keep a full-screen game visible (and watched)
-   while you chat. (While the chat is open this way, Window Watcher's Dock icon
-   steps aside, the way Spotlight's panel works; it comes back when the chat hides.) Because ⌘⇧C then belongs to Window Watcher everywhere (in
-   Chrome it normally opens Inspect Element), you can turn this off under
-   **View → ⌘⇧C Works in Other Apps**. It then only works inside Window
+   while you chat. Because ⌘⇧C then belongs to Window Watcher everywhere (in
+   Chrome it normally opens Inspect Element), you can turn this off with
+   **⌘⇧C Works in Other Apps** in the eye's menu. It then only works inside Window
    Watcher. Apps that block outside shortcuts on purpose still block this one.
-6. Click **Add Documents…** to give Claude extra background info, like a game
+6. Click **Add…** under Reference Documents to give Claude extra background info, like a game
    guide, notes, a cheat sheet, or a manual. Files can be up to **500 MB**.
    Text, Markdown, PDF, Word (.docx/.doc), RTF, CSV, JSON, HTML and images work.
    PDFs and Word files are turned into searchable text, and for big documents
