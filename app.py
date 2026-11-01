@@ -61,7 +61,7 @@ SECONDS_AFTER_FAILED_CHECK = 60  # wait this long after a check fails
 KEEP_FRAMES = 4                  # how many different screenshots to keep
 CHAT_MESSAGES_SENT = 10          # how much recent chat goes with each question
 CHANGE_LOG_LENGTH = 8            # how many "what changed" notes to remember
-PREVIEW_WIDTH, PREVIEW_HEIGHT = 272, 170
+PREVIEW_WIDTH, PREVIEW_HEIGHT = 216, 135
 
 # The four programmable buttons start out with these. Click "Edit Buttons…"
 # in the app to change them; your text is saved between launches.
@@ -576,7 +576,7 @@ class MainWindow(QMainWindow):
         self.pause_button.clicked.connect(self.on_pause)
         self.change_button = QPushButton("Change Window…")
         self.change_button.clicked.connect(self.on_change_window)
-        self.chat_button = QPushButton("Show Chat Window")
+        self.chat_button = QPushButton("Show Chat")
         self.chat_button.clicked.connect(self.toggle_floating_chat)
         self.chat_button.setToolTip("Shortcut: ⌘⇧C")
         top_buttons = QHBoxLayout()
@@ -611,7 +611,7 @@ class MainWindow(QMainWindow):
             "One per line, for example:\n"
             "Tell me whenever a new message appears\n"
             "Warn me if the health bar gets low")
-        self.instructions_box.setFixedHeight(62)
+        self.instructions_box.setFixedHeight(54)
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.on_save_instructions)
         self.speak_checkbox = QCheckBox("Read alerts aloud")
@@ -670,9 +670,18 @@ class MainWindow(QMainWindow):
         chat_layout = QVBoxLayout(chat_card)
         chat_layout.setContentsMargins(16, 12, 16, 14)
         chat_layout.setSpacing(10)
-        chat_layout.addWidget(self.make_caption("CHAT"))
+        # Heading row: "CHAT" on the left, a small "Edit Buttons…" link on the right.
+        edit_buttons = QPushButton("Edit Buttons…")
+        edit_buttons.setObjectName("link")
+        edit_buttons.clicked.connect(self.edit_quick_prompts)
+        chat_heading = QHBoxLayout()
+        chat_heading.addWidget(self.make_caption("CHAT"))
+        chat_heading.addStretch()
+        chat_heading.addWidget(edit_buttons)
+        chat_layout.addLayout(chat_heading)
         chat_layout.addWidget(self.chat_view, 1)
-        chat_layout.addWidget(self.make_quick_prompt_bar())
+        # The quick buttons in a 2x2 grid keep the window narrow.
+        chat_layout.addWidget(self.make_quick_prompt_bar(columns=2, with_edit_button=False))
         chat_layout.addLayout(ask_row)
 
         layout = QVBoxLayout()
@@ -685,7 +694,7 @@ class MainWindow(QMainWindow):
         central.setObjectName("root")
         central.setLayout(layout)
         self.setCentralWidget(central)
-        self.resize(820, 800)
+        self.resize(640, 660)
         self.attach_shortcuts(self)
         self.attach_shortcuts(self.floating_chat)
         self.apply_theme()
@@ -962,9 +971,8 @@ class MainWindow(QMainWindow):
 
     def update_chat_button(self):
         visible = self.floating_chat.isVisible()
-        label = "Hide Chat Window" if visible else "Show Chat Window"
-        self.chat_button.setText(label)
-        self.chat_action.setText(label)
+        self.chat_button.setText("Hide Chat" if visible else "Show Chat")
+        self.chat_action.setText("Hide Chat Window" if visible else "Show Chat Window")
 
     def on_ask(self):
         """You pressed Ask (or Return) in the main window."""

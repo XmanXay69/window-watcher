@@ -62,6 +62,13 @@ def stylesheet(c):
         QPushButton:disabled {{ color: {c['secondary']}; }}
         QPushButton#primary {{ background: {c['accent']}; color: white; font-weight: 600; }}
         QPushButton#primary:hover {{ background: {QColor(c['accent']).lighter(112).name()}; }}
+        QPushButton#link {{
+            background: transparent;
+            color: {c['secondary']};
+            padding: 0 2px;
+            font-size: 12px;
+        }}
+        QPushButton#link:hover {{ color: {c['accent']}; background: transparent; }}
         QPushButton#chip {{
             background: {c['button']};
             color: {c['text']};

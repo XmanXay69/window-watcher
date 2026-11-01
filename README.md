@@ -87,11 +87,11 @@ may record the screen, and Window Watcher shows instructions:
 3. Type a question at the bottom and press Return. Or click one of the four
    programmable buttons above the question box (like **What's the answer to
    this?** or **Explain this**) to send that message in one click, or press
-   **⌘1**–**⌘4**. Click **Edit Buttons…** to type your own text into them.
+   **⌘1**–**⌘4**. Click **Edit Buttons…** (next to the CHAT heading) to type your own text into them.
    Your buttons are saved for next time.
 4. Optional: type standing instructions (one per line) in the box and click
    **Save**. Tick **Read alerts aloud** to hear alerts.
-5. Click **Show Chat Window** for a separate chat that floats on top of other
+5. Click **Show Chat** for a separate chat that floats on top of other
    apps. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
    for the whole conversation. **Hide** (or the window's close button) hides it.
