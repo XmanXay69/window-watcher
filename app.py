@@ -232,11 +232,13 @@ class FloatingChat(QWidget):
         # Same seamless top as the main window (no separate title strip).
         self.setWindowFlag(Qt.ExpandedClientAreaHint, True)
         self.setWindowFlag(Qt.NoTitleBarBackgroundHint, True)
-        self.resize(440, 560)
+        self.resize(360, 460)
 
         self.chat_view = ChatView(main_window.chat)
-        # A 2x2 grid of programmable buttons keeps this window narrow.
+        # A 2x2 grid of smaller programmable buttons keeps this window narrow.
         self.prompt_bar = main_window.make_quick_prompt_bar(columns=2, with_edit_button=False)
+        self.prompt_bar.setStyleSheet(
+            "QPushButton#chip { font-size: 12px; padding: 4px 9px; border-radius: 10px; }")
         self.question_box = QLineEdit()
         self.question_box.setPlaceholderText("Ask about the window…")
         self.question_box.returnPressed.connect(self.on_ask)
@@ -244,6 +246,7 @@ class FloatingChat(QWidget):
         ask_button.setObjectName("primary")
         ask_button.clicked.connect(self.on_ask)
         copy_all_button = QPushButton("Copy All")
+        copy_all_button.setObjectName("link")  # small text button (theme.py)
         copy_all_button.clicked.connect(main_window.copy_all_chat)
         hide_button = QPushButton("Hide")
         hide_button.setToolTip("Shortcut: ⌘⇧C")
@@ -254,6 +257,7 @@ class FloatingChat(QWidget):
         ask_row.addWidget(ask_button)
         bottom_row = QHBoxLayout()
         edit_buttons_button = QPushButton("Edit Buttons…")
+        edit_buttons_button.setObjectName("link")
         edit_buttons_button.clicked.connect(main_window.edit_quick_prompts)
         bottom_row.addWidget(copy_all_button)
         bottom_row.addWidget(edit_buttons_button)
@@ -261,6 +265,8 @@ class FloatingChat(QWidget):
         bottom_row.addWidget(hide_button)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 12)
+        layout.setSpacing(8)
         layout.addWidget(self.chat_view, 1)
         layout.addWidget(self.prompt_bar)
         layout.addLayout(ask_row)
