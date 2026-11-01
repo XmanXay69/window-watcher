@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION=1.6.1
+VERSION=1.6.2
 
 # PyInstaller bundles Python, Qt and PyObjC into a normal Mac app.
 .venv/bin/pip install -q pyinstaller
@@ -39,7 +39,9 @@ if [ "$1" = "--install" ]; then
         codesign --force --deep --sign - "dist/Window Watcher.app"
     fi
     codesign --verify --deep --strict "dist/Window Watcher.app"
+    # Close the running app (a permission message can block a polite quit).
     osascript -e 'quit app "Window Watcher"' 2>/dev/null || true
+    pkill -f "Window Watcher.app/Contents/MacOS/Window Watcher" 2>/dev/null || true
     rm -rf "/Applications/Window Watcher.app"
     cp -R "dist/Window Watcher.app" /Applications/
     echo "Installed /Applications/Window Watcher.app"

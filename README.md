@@ -17,6 +17,9 @@ subscription, so there's no API key.
 2. Download **WindowWatcher.dmg** from the
    [latest release](https://github.com/XmanXay69/window-watcher/releases/latest),
    open it, and drag **Window Watcher** into **Applications**.
+   Then eject the DMG (the eject button next to it in Finder's sidebar) and always
+   open the app from Applications. Opening the copy inside the DMG makes macOS
+   treat it as a different app, so Screen Recording won't work.
 3. Open it from Applications. Because the app isn't notarized by Apple, the
    first launch gets blocked: go to **System Settings → Privacy & Security**,
    scroll down, and click **Open Anyway** next to "Window Watcher".
