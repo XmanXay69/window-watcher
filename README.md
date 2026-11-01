@@ -119,6 +119,12 @@ cd ~/Desktop/Coding/WindowWatcher && .venv/bin/python practice_window.py
 
 Then pick **Python — Practice Game** in Window Watcher.
 
+You can also turn Open at Login on or off from Terminal:
+
+```bash
+"/Applications/Window Watcher.app/Contents/MacOS/Window Watcher" --open-at-login=on
+```
+
 ## Good to know
 
 - **The window must be on your current desktop.** macOS can't capture a

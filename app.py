@@ -1334,6 +1334,14 @@ def ask_for_screen_permission():
 
 
 def main():
+    # One-time command, same as the menu's "Open at Login" item:
+    #   "Window Watcher" --open-at-login=on   (or =off)
+    for arg in sys.argv[1:]:
+        if arg.startswith("--open-at-login="):
+            problem = menubar.set_open_at_login(arg.split("=", 1)[1] == "on")
+            print(problem or f"Open at Login is now {'on' if menubar.opens_at_login() else 'off'}.")
+            return
+
     try:
         # Show "Window Watcher" in the menu bar instead of "Python".
         from Foundation import NSBundle
