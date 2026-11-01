@@ -82,8 +82,14 @@ may record the screen, and Window Watcher shows instructions:
    apps. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
    for the whole conversation. **Hide** (or the window's close button) hides it.
-   Shortcut: press **⌘⇧C** (Command-Shift-C) to show or hide it while Window
-   Watcher is the active app (also in the menu bar under **View**).
+   Shortcut: press **⌘⇧C** (Command-Shift-C) to show or hide it, even while
+   another app or game is in front. Hiding it takes you back to the app you
+   were using. The chat window shows up on every desktop, including over apps
+   in full-screen mode, so you can keep a full-screen game visible (and watched)
+   while you chat. Because ⌘⇧C then belongs to Window Watcher everywhere (in
+   Chrome it normally opens Inspect Element), you can turn this off under
+   **View → ⌘⇧C Works in Other Apps**. It then only works inside Window
+   Watcher. Apps that block outside shortcuts on purpose still block this one.
 6. Click **Add Documents…** to give Claude extra background info, like a game
    guide, notes, a cheat sheet, or a manual. Files can be up to **500 MB**.
    Text, Markdown, PDF, Word (.docx/.doc), RTF, CSV, JSON, HTML and images work.
@@ -134,6 +140,7 @@ Then pick **Python — Practice Game** in Window Watcher.
 | `capture.py` | Lists windows and screenshots one with ScreenCaptureKit; spots changes |
 | `claude_bridge.py` | Runs `claude -p` and builds the prompts |
 | `documents.py` | Prepares reference documents (PDF/Word to text, size limits) |
+| `hotkeys.py` | The system-wide ⌘⇧C shortcut (Apple's RegisterEventHotKey) |
 | `practice_window.py` | A pretend game for testing |
 | `make_icon.py` | Draws the app icon (`icon.png`, `icon.icns`) |
 

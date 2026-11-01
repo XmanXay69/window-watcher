@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
 import capture
 import claude_bridge
 import documents
+import hotkeys
 
 # --- Settings you can tweak --------------------------------------------------
 CAPTURE_EVERY_SECONDS = 2.5      # how often to take a screenshot
@@ -203,7 +204,7 @@ class FloatingChat(QWidget):
         copy_all_button.clicked.connect(main_window.copy_all_chat)
         hide_button = QPushButton("Hide")
         hide_button.setToolTip("Shortcut: ⌘⇧C")
-        hide_button.clicked.connect(self.hide)
+        hide_button.clicked.connect(main_window.hide_floating_chat)
 
         ask_row = QHBoxLayout()
         ask_row.addWidget(self.question_box, 1)
@@ -233,6 +234,22 @@ class FloatingChat(QWidget):
     def showEvent(self, event):
         self.main_window.update_chat_button()
         super().showEvent(event)
+        self.show_on_every_desktop()
+
+    def show_on_every_desktop(self):
+        """Let this window appear on every desktop (Space), including over an
+        app in full-screen mode, so it can sit on top of a full-screen game.
+        These are standard macOS window settings ("collection behaviors")."""
+        try:
+            import objc
+            from AppKit import (NSWindowCollectionBehaviorCanJoinAllSpaces,
+                                NSWindowCollectionBehaviorFullScreenAuxiliary)
+            ns_window = objc.objc_object(c_void_p=int(self.winId())).window()
+            ns_window.setCollectionBehavior_(ns_window.collectionBehavior()
+                                             | NSWindowCollectionBehaviorCanJoinAllSpaces
+                                             | NSWindowCollectionBehaviorFullScreenAuxiliary)
+        except Exception as error:  # a nice-to-have; never crash over it
+            print("Couldn't show the chat on every desktop:", error)
 
 
 @dataclass(eq=False)
@@ -405,6 +422,18 @@ class MainWindow(QMainWindow):
         self.signals.documents_ready.connect(self.on_documents_ready)
 
         self.build_ui()
+
+        # The system-wide ⌘⇧C. On by default; turn it off in the View menu.
+        self.previous_app = None  # the app you were in before ⌘⇧C opened the chat
+        try:
+            self.global_hotkey = hotkeys.GlobalHotKey(hotkeys.KEY_C, hotkeys.COMMAND | hotkeys.SHIFT,
+                                                      self.on_global_shortcut)
+        except OSError as error:
+            self.global_hotkey = None
+            print(error)
+        self.global_shortcut_action.setEnabled(self.global_hotkey is not None)
+        wanted = str(self.settings.value("global_shortcut", "true")) == "true"
+        self.global_shortcut_action.setChecked(wanted and self.global_hotkey is not None)
         self.update_documents_label()
 
         # The timer that takes a screenshot every few seconds.
@@ -429,7 +458,13 @@ class MainWindow(QMainWindow):
         self.chat_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         self.chat_action.setShortcutContext(Qt.ApplicationShortcut)
         self.chat_action.triggered.connect(self.toggle_floating_chat)
-        self.menuBar().addMenu("View").addAction(self.chat_action)
+        view_menu = self.menuBar().addMenu("View")
+        view_menu.addAction(self.chat_action)
+        # ⌘⇧C can also work while other apps are in front (see hotkeys.py).
+        self.global_shortcut_action = QAction("⌘⇧C Works in Other Apps", self)
+        self.global_shortcut_action.setCheckable(True)
+        self.global_shortcut_action.toggled.connect(self.set_global_shortcut)
+        view_menu.addAction(self.global_shortcut_action)
 
         # Menu bar: Buttons > (each programmable button), with Cmd+1 to Cmd+4.
         buttons_menu = self.menuBar().addMenu("Buttons")
@@ -634,9 +669,53 @@ class MainWindow(QMainWindow):
                 self.settings.setValue(f"quick_prompt_{number + 1}", text)
             self.refresh_quick_prompts()
 
+    # --- The system-wide shortcut ---------------------------------------------
+
+    def set_global_shortcut(self, on):
+        """Turn the system-wide ⌘⇧C on or off (from the View menu)."""
+        if self.global_hotkey is None:
+            return
+        if on and not self.global_hotkey.turn_on():
+            self.add_chat("error", "Another app is already using ⌘⇧C everywhere, so it only "
+                                   "works inside Window Watcher.")
+            self.global_shortcut_action.setChecked(False)
+            return
+        if not on:
+            self.global_hotkey.turn_off()
+        self.settings.setValue("global_shortcut", "true" if on else "false")
+
+    def on_global_shortcut(self):
+        """⌘⇧C was pressed, whichever app is in front."""
+        from AppKit import NSApp, NSWorkspace
+        if self.floating_chat.isVisible() and NSApp.isActive():
+            self.hide_floating_chat()
+            return
+        # Remember where you were, so hiding the chat can take you back there.
+        front = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if front is not None and front.processIdentifier() != os.getpid():
+            self.previous_app = front
+        self.floating_chat.show()
+        self.floating_chat.raise_()
+        if hasattr(NSApp, "activate"):
+            NSApp.activate()  # bring Window Watcher to the front (macOS 14 and newer)
+        else:
+            NSApp.activateIgnoringOtherApps_(True)
+        self.floating_chat.activateWindow()
+        self.floating_chat.question_box.setFocus()
+
+    def hide_floating_chat(self):
+        """Hide the chat and, if ⌘⇧C opened it, go back to the app you were in."""
+        self.floating_chat.hide()
+        app, self.previous_app = self.previous_app, None
+        if app is not None and not app.isTerminated():
+            from AppKit import NSApp
+            if hasattr(NSApp, "yieldActivationToApplication_"):
+                NSApp.yieldActivationToApplication_(app)  # macOS 14+: hand focus over politely
+            app.activateWithOptions_(0)
+
     def toggle_floating_chat(self):
         if self.floating_chat.isVisible():
-            self.floating_chat.hide()
+            self.hide_floating_chat()
         else:
             self.floating_chat.show()
             self.floating_chat.raise_()
@@ -1036,6 +1115,8 @@ class MainWindow(QMainWindow):
     # --- Quitting ----------------------------------------------------------------
 
     def closeEvent(self, event):
+        if self.global_hotkey is not None:
+            self.global_hotkey.turn_off()
         self.capture_timer.stop()
         claude_bridge.stop_running_call()
         self.floating_chat.close()
