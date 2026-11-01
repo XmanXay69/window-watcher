@@ -39,7 +39,7 @@ from pathlib import Path
 os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio=false")
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QPalette, QPixmap
+from PySide6.QtGui import QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
@@ -910,6 +910,10 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Window Watcher")
+    # Our own Dock icon instead of Python's (the DMG app has it built in).
+    icon_path = Path(__file__).parent / "icon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     if not capture.has_screen_recording_permission():
         explain_missing_permission()

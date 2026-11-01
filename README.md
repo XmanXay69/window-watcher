@@ -122,6 +122,7 @@ Then pick **Python — Practice Game** in Window Watcher.
 | `capture.py` | Lists windows and screenshots one with ScreenCaptureKit; spots changes |
 | `claude_bridge.py` | Runs `claude -p` and builds the prompts |
 | `practice_window.py` | A pretend game for testing |
+| `make_icon.py` | Draws the app icon (`icon.png`, `icon.icns`) |
 
 Each Claude call runs:
 

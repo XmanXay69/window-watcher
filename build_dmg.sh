@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION=1.2.0
+VERSION=1.3.0
 
 # PyInstaller bundles Python, Qt and PyObjC into a normal Mac app.
 .venv/bin/pip install -q pyinstaller
@@ -12,6 +12,7 @@ rm -rf build dist
 .venv/bin/pyinstaller --noconfirm --windowed \
     --name "Window Watcher" \
     --osx-bundle-identifier com.xmanxay.windowwatcher \
+    --icon icon.icns \
     --hidden-import ScreenCaptureKit --hidden-import Quartz \
     --hidden-import Foundation --hidden-import AppKit \
     app.py
