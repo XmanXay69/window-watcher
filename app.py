@@ -5,6 +5,7 @@ Start it by double-clicking "Start Window Watcher.command", or in Terminal:
     .venv/bin/python app.py
 
 How it works:
+0. The app starts asleep, as an icon in the menu bar. Clicking it wakes it up.
 1. You pick a window. Every few seconds the app takes a screenshot of it.
 2. If a screenshot looks the same as the last one, it's thrown away.
 3. When you ask a question, the newest screenshot (plus the one from before
@@ -42,7 +43,7 @@ from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
+    QFrame, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
     QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -50,6 +51,7 @@ import capture
 import claude_bridge
 import documents
 import hotkeys
+import menubar
 
 # --- Settings you can tweak --------------------------------------------------
 CAPTURE_EVERY_SECONDS = 2.5      # how often to take a screenshot
@@ -314,16 +316,44 @@ def clean_old_temp_folders():
 # ---------------------------------------------------------------------------
 
 class WindowPicker(QDialog):
-    """Shows the open windows and lets you pick one."""
+    """Shows the open windows and lets you pick one.
 
-    def __init__(self, parent=None):
+    Normally it's a regular dialog. Given under_rect (the menu bar icon's
+    position), it becomes a dropdown panel hanging under the icon, like the
+    menu bar's Wi-Fi or Control Center panels: no title bar, rounded corners,
+    and clicking anywhere else closes it."""
+
+    def __init__(self, parent=None, under_rect=None):
         super().__init__(parent)
         self.setWindowTitle("Choose a Window")
-        self.resize(540, 420)
         self.windows = []
         self.chosen = None
+        self.under_rect = under_rect
 
-        layout = QVBoxLayout(self)
+        # Everything sits on a "panel", so the dropdown style can round its corners.
+        panel = QFrame()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(panel)
+        layout = QVBoxLayout(panel)
+
+        if under_rect is not None:
+            # Popup: no title bar, closes when you click elsewhere.
+            self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+            self.setAttribute(Qt.WA_TranslucentBackground)  # lets the corners be round
+            colors = self.palette()
+            panel.setObjectName("panel")
+            panel.setStyleSheet(
+                f"#panel {{ background: {colors.color(QPalette.Window).name()};"
+                f" border: 1px solid {colors.color(QPalette.Mid).name()}; border-radius: 12px; }}")
+            layout.setContentsMargins(14, 12, 14, 12)
+            title = QLabel("Window Watcher")
+            title.setStyleSheet("font-weight: 600; font-size: 14px;")
+            layout.addWidget(title)
+            self.resize(420, 360)
+        else:
+            self.resize(540, 420)
+
         layout.addWidget(QLabel("Which window should Window Watcher look at?"))
 
         self.list = QListWidget()
@@ -345,6 +375,20 @@ class WindowPicker(QDialog):
         layout.addLayout(buttons)
 
         self.refresh()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.under_rect is not None:
+            self.move_under_icon()
+
+    def move_under_icon(self):
+        """Center the panel just below the menu bar icon, kept on screen."""
+        icon = self.under_rect
+        screen = QApplication.screenAt(icon.center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        x = icon.center().x() - self.width() // 2
+        x = max(area.left() + 8, min(x, area.right() - self.width() - 8))
+        self.move(x, max(icon.bottom() + 6, area.top() + 4))
 
     def refresh(self):
         """Reload the list of open windows."""
@@ -394,6 +438,9 @@ class MainWindow(QMainWindow):
         self.history = []             # recent screenshots that differ from each other
         self.last_change_time = None
 
+        self.dormant = True           # asleep in the menu bar (see wake/go_dormant)
+        self.menu_icon = None         # the menu bar icon, set up in main()
+        self.claude_checked = False
         self.busy = False             # True while a Claude call is running
         self.busy_kind = None
         self.job_count = 0
@@ -440,7 +487,7 @@ class MainWindow(QMainWindow):
         # The timer that takes a screenshot every few seconds.
         self.capture_timer = QTimer(self)
         self.capture_timer.timeout.connect(self.capture_tick)
-        self.capture_timer.start(int(CAPTURE_EVERY_SECONDS * 1000))
+        # (The timer starts when you wake the app up from the menu bar.)
 
         self.update_status()
 
@@ -580,15 +627,91 @@ class MainWindow(QMainWindow):
 
     # --- Startup -------------------------------------------------------------
 
-    def first_run(self):
-        """Runs right after the window appears."""
-        # Check that Claude Code is installed and logged in (in the background,
-        # because it takes a second or two).
-        threading.Thread(
-            target=lambda: self.signals.claude_status.emit(claude_bridge.check_claude()),
-            daemon=True,
-        ).start()
+    # --- Asleep in the menu bar / awake --------------------------------------
+
+    def wake(self):
+        """Wake up from the menu bar: check permission, pick a window, start."""
+        if not self.dormant:
+            self.bring_to_front()
+            return
+        self.activate_app()  # so the dropdown gets the keyboard
+        # Screen Recording is only checked now, when you ask to start.
+        if not capture.can_capture_screen() and not ask_for_screen_permission():
+            self.set_dock_icon(False)
+            return
+        icon_rect = self.menu_icon.geometry()  # where the eye is in the menu bar
+        picker = WindowPicker(self, under_rect=icon_rect if icon_rect.isValid() else None)
+        if not (picker.exec() and picker.chosen):
+            self.set_dock_icon(False)  # cancelled: stay asleep
+            return
+
+        self.dormant = False
+        self.menu_icon.update_menu()
+        self.set_dock_icon(True)
+        self.show()
+        self.raise_()
+        self.capture_timer.start(int(CAPTURE_EVERY_SECONDS * 1000))
+        self.start_watching(picker.chosen)
+        if not self.claude_checked:
+            self.claude_checked = True
+            # Check that Claude Code is installed and logged in (in the
+            # background, because it takes a second or two).
+            threading.Thread(
+                target=lambda: self.signals.claude_status.emit(claude_bridge.check_claude()),
+                daemon=True,
+            ).start()
+
+    def go_dormant(self):
+        """Go back to sleep in the menu bar: stop taking screenshots, stop
+        Claude, delete the screenshots, and hide the windows. Your chat,
+        instructions, documents and buttons are kept for next time."""
+        if self.dormant:
+            return
+        self.dormant = True
+        self.capture_timer.stop()
+        claude_bridge.stop_running_call()
+        self.pending_questions.clear()
+        self.generation += 1  # results that were still on their way get ignored
+        self.forget_frames()
+        self.window = None
+        self.capture_problem = None
+        self.window_label.setText("Not watching anything")
+        self.preview.clear()
+        self.preview.setText("Asleep")
+        self.floating_chat.hide()
+        self.hide()
+        self.set_dock_icon(False)
+        self.add_chat("note", "Went to sleep. Click the eye in the menu bar to watch a window again.")
+        self.update_status()
+        self.menu_icon.update_menu()
+
+    def bring_to_front(self):
+        self.set_dock_icon(True)
+        self.show()
+        self.raise_()
+        self.activate_app()
+        self.activateWindow()
+
+    def change_window_from_menu_bar(self):
+        self.bring_to_front()
         self.on_change_window()
+
+    def set_dock_icon(self, show):
+        """Show the Dock icon and app menus while awake; hide them while asleep."""
+        from AppKit import NSApp, NSApplicationActivationPolicyAccessory, NSApplicationActivationPolicyRegular
+        policy = NSApplicationActivationPolicyRegular if show else NSApplicationActivationPolicyAccessory
+        if NSApp.activationPolicy() != policy:
+            NSApp.setActivationPolicy_(policy)
+
+    def activate_app(self):
+        from AppKit import NSApp
+        if hasattr(NSApp, "activate"):
+            NSApp.activate()  # macOS 14 and newer
+        else:
+            NSApp.activateIgnoringOtherApps_(True)
+
+    def quit_app(self):
+        QApplication.quit()  # shutdown() runs on the way out
 
     def on_claude_status(self, problem):
         if problem:
@@ -688,6 +811,9 @@ class MainWindow(QMainWindow):
     def on_global_shortcut(self):
         """⌘⇧C was pressed, whichever app is in front."""
         from AppKit import NSApp, NSWorkspace
+        if self.dormant:
+            self.wake()  # asleep: same as clicking the menu bar icon
+            return
         if self.floating_chat.isVisible() and NSApp.isActive():
             self.hide_floating_chat()
             return
@@ -716,10 +842,9 @@ class MainWindow(QMainWindow):
 
     def restore_dock_icon(self):
         """Switch back to a normal app (with a Dock icon) after the shortcut's
-        accessory mode. Called whenever the chat window hides."""
-        from AppKit import NSApp, NSApplicationActivationPolicyRegular
-        if NSApp.activationPolicy() != NSApplicationActivationPolicyRegular:
-            NSApp.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+        accessory mode. Called whenever the chat window hides. While asleep,
+        the app stays hidden in the menu bar."""
+        self.set_dock_icon(not self.dormant)
 
     def hide_floating_chat(self):
         """Hide the chat and, if ⌘⇧C opened it, go back to the app you were in."""
@@ -1133,13 +1258,21 @@ class MainWindow(QMainWindow):
     # --- Quitting ----------------------------------------------------------------
 
     def closeEvent(self, event):
+        """The window's close button puts the app to sleep instead of quitting.
+        To quit, use the menu bar icon's menu or ⌘Q."""
+        event.ignore()
+        self.go_dormant()
+
+    def shutdown(self):
+        """Clean up when the app really quits."""
         if self.global_hotkey is not None:
             self.global_hotkey.turn_off()
         self.capture_timer.stop()
         claude_bridge.stop_running_call()
         self.floating_chat.close()
+        if self.menu_icon is not None:
+            self.menu_icon.hide()
         shutil.rmtree(self.frames_dir, ignore_errors=True)
-        super().closeEvent(event)
 
 
 # ---------------------------------------------------------------------------
@@ -1150,12 +1283,13 @@ def relaunch_app():
     """Start a fresh copy of Window Watcher a moment after this one quits.
     macOS only applies a new Screen Recording permission after a restart."""
     bundle = Path(sys.executable).resolve().parents[2]  # .../Window Watcher.app
-    subprocess.Popen(["/bin/sh", "-c", 'sleep 1; open -n "$0"', str(bundle)], start_new_session=True)
+    # --wake makes the new copy go straight to "pick a window".
+    subprocess.Popen(["/bin/sh", "-c", 'sleep 1; open -n "$0" --args --wake', str(bundle)], start_new_session=True)
 
 
 def ask_for_screen_permission():
     """Explain how to turn on Screen Recording. Returns True once it works,
-    False if you chose to quit."""
+    False if you cancelled (or chose Quit & Reopen, which restarts the app)."""
     capture.request_screen_recording_permission()  # adds the app to the list in System Settings
     frozen = getattr(sys, "frozen", False)  # True for the installed app, False for the script
     who = "Window Watcher" if frozen else "Terminal (or whichever app you started Window Watcher from)"
@@ -1178,7 +1312,7 @@ def ask_for_screen_permission():
         reset_button = box.addButton("Reset Permission", QMessageBox.ActionRole) if frozen else None
         check_button = box.addButton("Check Again", QMessageBox.ActionRole)
         reopen_button = box.addButton("Quit & Reopen", QMessageBox.AcceptRole) if frozen else None
-        box.addButton("Quit", QMessageBox.RejectRole)
+        box.addButton("Cancel", QMessageBox.RejectRole)
         box.exec()
 
         clicked = box.clickedButton()
@@ -1193,6 +1327,7 @@ def ask_for_screen_permission():
                 return True
         elif reopen_button is not None and clicked == reopen_button:
             relaunch_app()
+            QApplication.quit()
             return False
         else:
             return False
@@ -1213,12 +1348,16 @@ def main():
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
-    if not capture.can_capture_screen() and not ask_for_screen_permission():
-        return
+    # Keep running in the menu bar when no windows are open.
+    app.setQuitOnLastWindowClosed(False)
 
-    window = MainWindow()
-    window.show()
-    QTimer.singleShot(0, window.first_run)
+    window = MainWindow()  # created hidden and asleep
+    window.menu_icon = menubar.MenuBarIcon(window)
+    window.menu_icon.show()
+    window.set_dock_icon(False)  # asleep: menu bar icon only
+    app.aboutToQuit.connect(window.shutdown)
+    if "--wake" in sys.argv:  # reopened after granting Screen Recording
+        QTimer.singleShot(300, window.wake)
     app.exec()
 
 

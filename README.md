@@ -68,9 +68,18 @@ may record the screen, and Window Watcher shows instructions:
 
 ## Everyday use
 
-1. Double-click **Start Window Watcher.command**. Leave the Terminal window it
-   opens running in the background, because closing it quits the app.
-2. Pick a window from the list and click **Watch This Window**.
+1. Open **Window Watcher** from Applications (or double-click **Start Window
+   Watcher.command** if you run it from source; leave that Terminal window
+   open). It starts **asleep** as a small eye icon in the menu bar at the top
+   of the screen: no windows, no Dock icon, no screenshots, no Claude.
+2. Click the eye (or press **⌘⇧C**). Window Watcher wakes up, checks Screen
+   Recording permission, and drops down a panel under the eye asking which
+   window to watch (click anywhere else to close it and stay asleep). Pick one and click
+   **Watch This Window**. While it's awake, clicking the eye opens a menu: Show
+   Window Watcher, Show Chat, Change Window, **Go to Sleep**, **Open at Login**
+   (keeps the eye in the menu bar after a restart), and **Quit**. Closing the
+   main window also puts it to sleep: screenshots stop and are deleted, while
+   your chat, instructions, documents and buttons are kept.
 3. Type a question at the bottom and press Return. Or click one of the four
    programmable buttons above the question box (like **What's the answer to
    this?** or **Explain this**) to send that message in one click, or press
@@ -142,6 +151,7 @@ Then pick **Python — Practice Game** in Window Watcher.
 | `claude_bridge.py` | Runs `claude -p` and builds the prompts |
 | `documents.py` | Prepares reference documents (PDF/Word to text, size limits) |
 | `hotkeys.py` | The system-wide ⌘⇧C shortcut (Apple's RegisterEventHotKey) |
+| `menubar.py` | The menu bar icon, its menu, and Open at Login |
 | `practice_window.py` | A pretend game for testing |
 | `make_icon.py` | Draws the app icon (`icon.png`, `icon.icns`) |
 

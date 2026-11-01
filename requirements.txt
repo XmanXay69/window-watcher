@@ -4,3 +4,5 @@ PySide6-Essentials~=6.12
 pyobjc-framework-ScreenCaptureKit~=12.2
 pyobjc-framework-Quartz~=12.2
 pyobjc-framework-Cocoa~=12.2
+# Lets the installed app add itself to Login Items ("Open at Login")
+pyobjc-framework-ServiceManagement~=12.2

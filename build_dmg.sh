@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION=1.7.1
+VERSION=1.8.0
 
 # PyInstaller bundles Python, Qt and PyObjC into a normal Mac app.
 .venv/bin/pip install -q pyinstaller
@@ -17,12 +17,14 @@ rm -rf build dist
     --osx-bundle-identifier com.xmanxay.windowwatcher \
     --icon icon.icns \
     --hidden-import ScreenCaptureKit --hidden-import Quartz \
-    --hidden-import Foundation --hidden-import AppKit \
+    --hidden-import Foundation --hidden-import AppKit --hidden-import ServiceManagement \
     app.py
 
 # Put the version in the app's Info.plist.
 PLIST="dist/Window Watcher.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
+# A menu bar app: no Dock icon at launch (the app shows one while it's awake).
+/usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "$PLIST"
 
 # Sign the app. macOS remembers Screen Recording permission by signature.
 if [ "$1" = "--install" ]; then
