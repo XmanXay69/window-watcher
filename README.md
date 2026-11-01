@@ -78,10 +78,13 @@ may record the screen, and Window Watcher shows instructions:
    Shortcut: press **⌘⇧C** (Command-Shift-C) to show or hide it while Window
    Watcher is the active app (also in the menu bar under **View**).
 6. Click **Add Documents…** to give Claude extra background info, like a game
-   guide, notes, a cheat sheet, or a PDF manual. Claude reads them when they help
-   answer a question or check an alert. Text, Markdown, PDF, CSV, JSON, HTML and
-   images all work. **Remove All** detaches them. Copies are kept in the app's
-   temp folder and deleted when you quit; your original files aren't changed.
+   guide, notes, a cheat sheet, or a manual. Files can be up to **500 MB**.
+   Text, Markdown, PDF, Word (.docx/.doc), RTF, CSV, JSON, HTML and images work.
+   PDFs and Word files are turned into searchable text, and for big documents
+   Claude searches for the parts that match your question instead of reading the
+   whole thing. **Remove All** detaches them. Copies are kept in the app's temp
+   folder and deleted when you quit; your original files aren't changed.
+   (Scanned PDFs, which are pictures of pages, have no text to search.)
 7. **Pause** stops the automatic screenshots and alerts. **Change Window…**
    switches to a different window.
 
@@ -123,20 +126,21 @@ Then pick **Python — Practice Game** in Window Watcher.
 | `app.py` | The window: preview, status, chat, and the logic for when to ask Claude |
 | `capture.py` | Lists windows and screenshots one with ScreenCaptureKit; spots changes |
 | `claude_bridge.py` | Runs `claude -p` and builds the prompts |
+| `documents.py` | Prepares reference documents (PDF/Word to text, size limits) |
 | `practice_window.py` | A pretend game for testing |
 | `make_icon.py` | Draws the app icon (`icon.png`, `icon.icns`) |
 
 Each Claude call runs:
 
 ```
-claude -p --output-format json --system-prompt "…" --tools Read --allowedTools Read
+claude -p --output-format json --system-prompt "…" --tools Read,Grep --allowedTools Read,Grep
        --strict-mcp-config --no-session-persistence --effort low  (prompt on stdin)
 ```
 
 The prompt lists the screenshot file paths, recent chat, standing
 instructions, and recent changes, and Claude opens the images with its Read
-tool. Claude only gets the Read tool, so it can't run commands or change
-files. Background checks also pass `--json-schema`, so the answer comes back
+tool. Claude only gets the Read and Grep (search) tools, so it can't run
+commands or change files. Background checks also pass `--json-schema`, so the answer comes back
 as `{alert, message, change_summary}`.
 
 ## Building the DMG yourself

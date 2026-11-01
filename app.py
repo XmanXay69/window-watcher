@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
 
 import capture
 import claude_bridge
+import documents
 
 # --- Settings you can tweak --------------------------------------------------
 CAPTURE_EVERY_SECONDS = 2.5      # how often to take a screenshot
@@ -192,6 +193,7 @@ class Signals(QObject):
     frame_ready = Signal(object)    # a CaptureResult
     claude_done = Signal(object)    # a finished ClaudeJob
     claude_status = Signal(object)  # the startup "is Claude set up?" result
+    documents_ready = Signal(object)  # (documents, problems) after adding files
 
 
 def delete_file(path):
@@ -300,7 +302,7 @@ class MainWindow(QMainWindow):
         self.question_count = 0
 
         self.instructions = []        # standing instructions, one per line
-        self.documents = []           # reference documents you attached (Paths)
+        self.documents = []           # reference documents you attached (documents.Document)
         self.check_needed = False     # the screen changed since the last check
         self.last_checked = None      # the Frame Claude checked last time
         self.next_check_allowed = 0.0
@@ -313,6 +315,7 @@ class MainWindow(QMainWindow):
         self.signals.frame_ready.connect(self.on_frame_ready)
         self.signals.claude_done.connect(self.on_claude_done)
         self.signals.claude_status.connect(self.on_claude_status)
+        self.signals.documents_ready.connect(self.on_documents_ready)
 
         self.build_ui()
         self.update_documents_label()
@@ -398,15 +401,15 @@ class MainWindow(QMainWindow):
         instruction_side.addStretch()
 
         # Reference documents: extra background info Claude can read.
-        add_docs_button = QPushButton("Add Documents…")
-        add_docs_button.clicked.connect(self.on_add_documents)
+        self.add_docs_button = QPushButton("Add Documents…")
+        self.add_docs_button.clicked.connect(self.on_add_documents)
         self.clear_docs_button = QPushButton("Remove All")
         self.clear_docs_button.clicked.connect(self.on_clear_documents)
         self.docs_label = QLabel()
         self.docs_label.setWordWrap(True)
         self.docs_label.setStyleSheet(f"color: {self.gray};")
         docs_row = QHBoxLayout()
-        docs_row.addWidget(add_docs_button)
+        docs_row.addWidget(self.add_docs_button)
         docs_row.addWidget(self.docs_label, 1)
         docs_row.addWidget(self.clear_docs_button)
         instructions_row = QHBoxLayout()
@@ -538,39 +541,62 @@ class MainWindow(QMainWindow):
     # --- Reference documents ---------------------------------------------------
 
     def on_add_documents(self):
-        """Let you pick files that give Claude extra background info."""
+        """Let you pick files that give Claude extra background info.
+        Any size works: big ones are searched instead of read whole."""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Add Reference Documents", str(Path.home()),
-            "Documents (*.txt *.md *.pdf *.csv *.json *.html *.png *.jpg *.jpeg);;All files (*)")
+            "Documents (*.txt *.md *.pdf *.docx *.doc *.rtf *.odt *.csv *.json *.html "
+            "*.png *.jpg *.jpeg);;All files (*)")
         if not paths:
             return
-        # Copy them into the app's private folder, where Claude is allowed to read.
-        docs_dir = self.frames_dir / "docs"
+        names = ", ".join(Path(path).name for path in paths)
+        self.add_chat("note", f"Adding {names}… (big files can take a little while)")
+        self.add_docs_button.setEnabled(False)
+        threading.Thread(target=self.prepare_documents_in_background, args=(paths,), daemon=True).start()
+
+    def prepare_documents_in_background(self, paths):
+        """Runs on a background thread: copy and convert the files, which can
+        take a while for a big PDF, without freezing the window."""
+        docs_dir = self.frames_dir / "docs"  # inside the folder Claude may read
         docs_dir.mkdir(exist_ok=True)
-        for path in map(Path, paths):
-            copy = docs_dir / path.name
-            number = 2
-            while copy.exists():  # two files with the same name: add a number
-                copy = docs_dir / f"{path.stem} {number}{path.suffix}"
-                number += 1
-            shutil.copyfile(path, copy)
-            self.documents.append(copy)
-        names = ", ".join(Path(p).name for p in paths)
-        self.add_chat("note", f"Added {names}. Claude will use {'them' if len(paths) > 1 else 'it'} when answering.")
+        added, problems = [], []
+        for path in paths:
+            try:
+                added += documents.prepare_document(path, docs_dir)
+            except Exception as error:  # report it, don't crash
+                problems.append(f"Couldn't add {Path(path).name}: {error}")
+        self.signals.documents_ready.emit((added, problems))
+
+    def on_documents_ready(self, result):
+        """The files are ready (back on the main thread)."""
+        added, problems = result
+        self.add_docs_button.setEnabled(True)
+        self.documents += added
+        for problem in problems:
+            self.add_chat("error", problem)
+        for document in added:
+            if document.warning:
+                self.add_chat("note", document.warning)
+        names = list(dict.fromkeys(d.shown_name for d in added))  # unique, in order
+        if names:
+            self.add_chat("note", f"Added {', '.join(names)}. Claude will use "
+                                  f"{'them' if len(names) > 1 else 'it'} when answering.")
         self.update_documents_label()
 
     def on_clear_documents(self):
-        for path in self.documents:
-            delete_file(path)
+        for document in self.documents:
+            delete_file(document.path)
         self.documents = []
         self.add_chat("note", "Removed all reference documents.")
         self.update_documents_label()
 
     def update_documents_label(self):
         if self.documents:
-            self.docs_label.setText("Using: " + ", ".join(p.name for p in self.documents))
+            names = dict.fromkeys(d.shown_name for d in self.documents)  # unique, in order
+            self.docs_label.setText("Using: " + ", ".join(names))
         else:
-            self.docs_label.setText("No reference documents. Add notes, guides or PDFs to give Claude more context.")
+            self.docs_label.setText("No reference documents. Add notes, guides, PDFs or Word files "
+                                    "(any size) to give Claude more context.")
         self.clear_docs_button.setEnabled(bool(self.documents))
 
     def on_save_instructions(self):
@@ -756,7 +782,7 @@ class MainWindow(QMainWindow):
             before_time=before.time_text() if before else None,
             instructions=self.instructions,
             change_log=self.change_log,
-            documents=[str(path) for path in self.documents],
+            documents=[(str(d.path), d.description) for d in self.documents],
             chat_history=chat_so_far[-CHAT_MESSAGES_SENT:],
         )
         self.run_job(ClaudeJob("question", prompt, self.generation, [now_copy, before_copy], question=message))
@@ -774,7 +800,7 @@ class MainWindow(QMainWindow):
             instructions=self.instructions,
             change_log=self.change_log,
             recent_alerts=self.recent_alerts,
-            documents=[str(path) for path in self.documents],
+            documents=[(str(d.path), d.description) for d in self.documents],
         )
         self.check_needed = False
         self.next_check_allowed = time.time() + MIN_SECONDS_BETWEEN_CHECKS
