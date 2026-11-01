@@ -39,7 +39,7 @@ from pathlib import Path
 os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio=false")
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QPalette, QPixmap
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
@@ -123,6 +123,7 @@ class FloatingChat(QWidget):
         copy_all_button = QPushButton("Copy All")
         copy_all_button.clicked.connect(main_window.copy_all_chat)
         hide_button = QPushButton("Hide")
+        hide_button.setToolTip("Shortcut: ⌘⇧C")
         hide_button.clicked.connect(self.hide)
 
         ask_row = QHBoxLayout()
@@ -331,6 +332,15 @@ class MainWindow(QMainWindow):
         self.gray = "#8e8e93"  # macOS system gray; readable in light and dark mode
         self.red = "#ff453a" if palette.color(QPalette.Window).lightness() < 128 else "#d70015"
 
+        # Menu bar: View > Show/Hide Chat Window, with the keyboard shortcut
+        # Cmd+Shift+C. ("Ctrl" in Qt means the Command key on a Mac.)
+        # ApplicationShortcut makes it work in both of the app's windows.
+        self.chat_action = QAction("Show Chat Window", self)
+        self.chat_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        self.chat_action.setShortcutContext(Qt.ApplicationShortcut)
+        self.chat_action.triggered.connect(self.toggle_floating_chat)
+        self.menuBar().addMenu("View").addAction(self.chat_action)
+
         # Top: the live preview, with the window name, status and buttons.
         self.preview = QLabel("No window yet")
         self.preview.setFixedSize(PREVIEW_WIDTH, PREVIEW_HEIGHT)
@@ -353,6 +363,7 @@ class MainWindow(QMainWindow):
         self.change_button.clicked.connect(self.on_change_window)
         self.chat_button = QPushButton("Show Chat Window")
         self.chat_button.clicked.connect(self.toggle_floating_chat)
+        self.chat_button.setToolTip("Shortcut: ⌘⇧C")
         top_buttons = QHBoxLayout()
         top_buttons.addWidget(self.pause_button)
         top_buttons.addWidget(self.change_button)
@@ -497,7 +508,9 @@ class MainWindow(QMainWindow):
 
     def update_chat_button(self):
         visible = self.floating_chat.isVisible()
-        self.chat_button.setText("Hide Chat Window" if visible else "Show Chat Window")
+        label = "Hide Chat Window" if visible else "Show Chat Window"
+        self.chat_button.setText(label)
+        self.chat_action.setText(label)
 
     def on_ask(self):
         """You pressed Ask (or Return) in the main window."""

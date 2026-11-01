@@ -75,6 +75,8 @@ may record the screen, and Window Watcher shows instructions:
    apps. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
    for the whole conversation. **Hide** (or the window's close button) hides it.
+   Shortcut: press **⌘⇧C** (Command-Shift-C) to show or hide it while Window
+   Watcher is the active app (also in the menu bar under **View**).
 6. Click **Add Documents…** to give Claude extra background info, like a game
    guide, notes, a cheat sheet, or a PDF manual. Claude reads them when they help
    answer a question or check an alert. Text, Markdown, PDF, CSV, JSON, HTML and
