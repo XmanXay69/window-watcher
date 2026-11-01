@@ -41,7 +41,7 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio=false")
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QPalette, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
     QTextBrowser, QVBoxLayout, QWidget,
 )
@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
         self.question_count = 0
 
         self.instructions = []        # standing instructions, one per line
+        self.documents = []           # reference documents you attached (Paths)
         self.check_needed = False     # the screen changed since the last check
         self.last_checked = None      # the Frame Claude checked last time
         self.next_check_allowed = 0.0
@@ -313,6 +314,7 @@ class MainWindow(QMainWindow):
         self.signals.claude_status.connect(self.on_claude_status)
 
         self.build_ui()
+        self.update_documents_label()
 
         # The timer that takes a screenshot every few seconds.
         self.capture_timer = QTimer(self)
@@ -383,6 +385,19 @@ class MainWindow(QMainWindow):
         instruction_side.addWidget(save_button)
         instruction_side.addWidget(self.speak_checkbox)
         instruction_side.addStretch()
+
+        # Reference documents: extra background info Claude can read.
+        add_docs_button = QPushButton("Add Documents…")
+        add_docs_button.clicked.connect(self.on_add_documents)
+        self.clear_docs_button = QPushButton("Remove All")
+        self.clear_docs_button.clicked.connect(self.on_clear_documents)
+        self.docs_label = QLabel()
+        self.docs_label.setWordWrap(True)
+        self.docs_label.setStyleSheet(f"color: {self.gray};")
+        docs_row = QHBoxLayout()
+        docs_row.addWidget(add_docs_button)
+        docs_row.addWidget(self.docs_label, 1)
+        docs_row.addWidget(self.clear_docs_button)
         instructions_row = QHBoxLayout()
         instructions_row.addWidget(self.instructions_box, 1)
         instructions_row.addLayout(instruction_side)
@@ -404,6 +419,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(top)
         layout.addSpacing(6)
         layout.addLayout(instructions_row)
+        layout.addLayout(docs_row)
         layout.addWidget(self.chat_view, 1)
         layout.addLayout(ask_row)
         central = QWidget()
@@ -505,6 +521,44 @@ class MainWindow(QMainWindow):
         # arrives, on_frame_ready() starts the question.
         self.capture_tick(forced=True)
         self.start_next_job()
+
+    # --- Reference documents ---------------------------------------------------
+
+    def on_add_documents(self):
+        """Let you pick files that give Claude extra background info."""
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Add Reference Documents", str(Path.home()),
+            "Documents (*.txt *.md *.pdf *.csv *.json *.html *.png *.jpg *.jpeg);;All files (*)")
+        if not paths:
+            return
+        # Copy them into the app's private folder, where Claude is allowed to read.
+        docs_dir = self.frames_dir / "docs"
+        docs_dir.mkdir(exist_ok=True)
+        for path in map(Path, paths):
+            copy = docs_dir / path.name
+            number = 2
+            while copy.exists():  # two files with the same name: add a number
+                copy = docs_dir / f"{path.stem} {number}{path.suffix}"
+                number += 1
+            shutil.copyfile(path, copy)
+            self.documents.append(copy)
+        names = ", ".join(Path(p).name for p in paths)
+        self.add_chat("note", f"Added {names}. Claude will use {'them' if len(paths) > 1 else 'it'} when answering.")
+        self.update_documents_label()
+
+    def on_clear_documents(self):
+        for path in self.documents:
+            delete_file(path)
+        self.documents = []
+        self.add_chat("note", "Removed all reference documents.")
+        self.update_documents_label()
+
+    def update_documents_label(self):
+        if self.documents:
+            self.docs_label.setText("Using: " + ", ".join(p.name for p in self.documents))
+        else:
+            self.docs_label.setText("No reference documents. Add notes, guides or PDFs to give Claude more context.")
+        self.clear_docs_button.setEnabled(bool(self.documents))
 
     def on_save_instructions(self):
         lines = [line.strip() for line in self.instructions_box.toPlainText().splitlines()]
@@ -689,6 +743,7 @@ class MainWindow(QMainWindow):
             before_time=before.time_text() if before else None,
             instructions=self.instructions,
             change_log=self.change_log,
+            documents=[str(path) for path in self.documents],
             chat_history=chat_so_far[-CHAT_MESSAGES_SENT:],
         )
         self.run_job(ClaudeJob("question", prompt, self.generation, [now_copy, before_copy], question=message))
@@ -706,6 +761,7 @@ class MainWindow(QMainWindow):
             instructions=self.instructions,
             change_log=self.change_log,
             recent_alerts=self.recent_alerts,
+            documents=[str(path) for path in self.documents],
         )
         self.check_needed = False
         self.next_check_allowed = time.time() + MIN_SECONDS_BETWEEN_CHECKS

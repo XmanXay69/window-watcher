@@ -75,7 +75,12 @@ may record the screen, and Window Watcher shows instructions:
    apps. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
    for the whole conversation. **Hide** (or the window's close button) hides it.
-6. **Pause** stops the automatic screenshots and alerts. **Change Window…**
+6. Click **Add Documents…** to give Claude extra background info, like a game
+   guide, notes, a cheat sheet, or a PDF manual. Claude reads them when they help
+   answer a question or check an alert. Text, Markdown, PDF, CSV, JSON, HTML and
+   images all work. **Remove All** detaches them. Copies are kept in the app's
+   temp folder and deleted when you quit; your original files aren't changed.
+7. **Pause** stops the automatic screenshots and alerts. **Change Window…**
    switches to a different window.
 
 To try it safely first, run the practice window in a second Terminal window:
