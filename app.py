@@ -38,10 +38,10 @@ from pathlib import Path
 # (This has to be set before Qt is imported.)
 os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio=false")
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPalette, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QCheckBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
     QTextBrowser, QVBoxLayout, QWidget,
 )
@@ -58,6 +58,15 @@ KEEP_FRAMES = 4                  # how many different screenshots to keep
 CHAT_MESSAGES_SENT = 10          # how much recent chat goes with each question
 CHANGE_LOG_LENGTH = 8            # how many "what changed" notes to remember
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 300, 190
+
+# The four programmable buttons start out with these. Click "Edit Buttons…"
+# in the app to change them; your text is saved between launches.
+QUICK_PROMPT_DEFAULTS = [
+    "What's the answer to this?",
+    "Explain this",
+    "What just changed?",
+    "Summarize what's on screen",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +114,73 @@ class ChatView(QTextBrowser):
         scrollbar.setValue(scrollbar.maximum())
 
 
+class QuickPromptBar(QWidget):
+    """A row of programmable buttons. Clicking one sends its text to Claude,
+    just as if you'd typed it. One bar sits in each chat area."""
+
+    def __init__(self, main_window, columns=4, with_edit_button=True):
+        super().__init__()
+        self.main_window = main_window
+        self.buttons = []
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        for number in range(len(QUICK_PROMPT_DEFAULTS)):
+            button = QPushButton()
+            button.clicked.connect(lambda checked=False, n=number: main_window.send_quick_prompt(n))
+            grid.addWidget(button, number // columns, number % columns)
+            self.buttons.append(button)
+        if with_edit_button:
+            edit_button = QPushButton("Edit Buttons…")
+            edit_button.clicked.connect(main_window.edit_quick_prompts)
+            grid.addWidget(edit_button, 0, columns)
+
+    def refresh(self, prompts):
+        """Show the current button texts. Empty ones are hidden."""
+        for number, (button, text) in enumerate(zip(self.buttons, prompts)):
+            short = text if len(text) <= 30 else text[:29] + "…"
+            button.setText(short)
+            button.setToolTip(f"{text}\nShortcut: ⌘{number + 1}")
+            button.setVisible(bool(text))
+
+
+class EditQuickPromptsDialog(QDialog):
+    """Four boxes for typing what each button should send."""
+
+    def __init__(self, parent, prompts):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Buttons")
+        self.resize(460, 0)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Type what each button sends to Claude. Leave a box empty to hide that button."))
+        self.boxes = []
+        for number, text in enumerate(prompts):
+            box = QLineEdit(text)
+            box.setPlaceholderText(f"Button {number + 1} (⌘{number + 1})")
+            layout.addWidget(box)
+            self.boxes.append(box)
+
+        buttons = QHBoxLayout()
+        reset_button = QPushButton("Reset to Defaults")
+        reset_button.clicked.connect(self.reset)
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        save_button = QPushButton("Save")
+        save_button.setDefault(True)
+        save_button.clicked.connect(self.accept)
+        buttons.addWidget(reset_button)
+        buttons.addStretch()
+        buttons.addWidget(cancel_button)
+        buttons.addWidget(save_button)
+        layout.addLayout(buttons)
+
+    def reset(self):
+        for box, text in zip(self.boxes, QUICK_PROMPT_DEFAULTS):
+            box.setText(text)
+
+    def prompts(self):
+        return [box.text().strip() for box in self.boxes]
+
+
 class FloatingChat(QWidget):
     """A separate chat window that stays on top of other apps, so you can
     keep it next to the window you're watching. Closing it just hides it."""
@@ -116,6 +192,8 @@ class FloatingChat(QWidget):
         self.resize(420, 520)
 
         self.chat_view = ChatView(main_window.chat)
+        # A 2x2 grid of programmable buttons keeps this window narrow.
+        self.prompt_bar = main_window.make_quick_prompt_bar(columns=2, with_edit_button=False)
         self.question_box = QLineEdit()
         self.question_box.setPlaceholderText("Ask about the window…")
         self.question_box.returnPressed.connect(self.on_ask)
@@ -131,12 +209,16 @@ class FloatingChat(QWidget):
         ask_row.addWidget(self.question_box, 1)
         ask_row.addWidget(ask_button)
         bottom_row = QHBoxLayout()
+        edit_buttons_button = QPushButton("Edit Buttons…")
+        edit_buttons_button.clicked.connect(main_window.edit_quick_prompts)
         bottom_row.addWidget(copy_all_button)
+        bottom_row.addWidget(edit_buttons_button)
         bottom_row.addStretch()
         bottom_row.addWidget(hide_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.chat_view, 1)
+        layout.addWidget(self.prompt_bar)
         layout.addLayout(ask_row)
         layout.addLayout(bottom_row)
 
@@ -299,6 +381,11 @@ class MainWindow(QMainWindow):
         self.job_count = 0
         self.pending_questions = []   # ChatMessages waiting for Claude
         self.chat = []                # every ChatMessage, oldest first
+        # The programmable buttons' text, saved between launches by QSettings.
+        self.settings = QSettings("XmanXay69", "Window Watcher")
+        self.quick_prompts = [str(self.settings.value(f"quick_prompt_{n + 1}", default))
+                              for n, default in enumerate(QUICK_PROMPT_DEFAULTS)]
+        self.prompt_bars = []         # every QuickPromptBar on screen
         self.question_count = 0
 
         self.instructions = []        # standing instructions, one per line
@@ -343,6 +430,19 @@ class MainWindow(QMainWindow):
         self.chat_action.setShortcutContext(Qt.ApplicationShortcut)
         self.chat_action.triggered.connect(self.toggle_floating_chat)
         self.menuBar().addMenu("View").addAction(self.chat_action)
+
+        # Menu bar: Buttons > (each programmable button), with Cmd+1 to Cmd+4.
+        buttons_menu = self.menuBar().addMenu("Buttons")
+        self.quick_prompt_actions = []
+        for number in range(len(QUICK_PROMPT_DEFAULTS)):
+            action = QAction(self)
+            action.setShortcut(QKeySequence(f"Ctrl+{number + 1}"))
+            action.setShortcutContext(Qt.ApplicationShortcut)
+            action.triggered.connect(lambda checked=False, n=number: self.send_quick_prompt(n))
+            buttons_menu.addAction(action)
+            self.quick_prompt_actions.append(action)
+        buttons_menu.addSeparator()
+        buttons_menu.addAction("Edit Buttons…", self.edit_quick_prompts)
 
         # Top: the live preview, with the window name, status and buttons.
         self.preview = QLabel("No window yet")
@@ -435,10 +535,12 @@ class MainWindow(QMainWindow):
         layout.addLayout(instructions_row)
         layout.addLayout(docs_row)
         layout.addWidget(self.chat_view, 1)
+        layout.addWidget(self.make_quick_prompt_bar())
         layout.addLayout(ask_row)
         central = QWidget()
         central.setLayout(layout)
         self.setCentralWidget(central)
+        self.refresh_quick_prompts()
 
     # --- Startup -------------------------------------------------------------
 
@@ -501,6 +603,36 @@ class MainWindow(QMainWindow):
                 about = f" (answer to Q{m.reply_to.number})" if m.reply_to else ""
                 lines.append(f"[{m.time_text()}] {label}{about}: {m.text}")
         QApplication.clipboard().setText("\n\n".join(lines))
+
+    # --- Programmable buttons ---------------------------------------------------
+
+    def make_quick_prompt_bar(self, columns=4, with_edit_button=True):
+        bar = QuickPromptBar(self, columns, with_edit_button)
+        self.prompt_bars.append(bar)
+        return bar
+
+    def refresh_quick_prompts(self):
+        """Update every button bar and the Buttons menu with the current text."""
+        for bar in self.prompt_bars:
+            bar.refresh(self.quick_prompts)
+        for action, text in zip(self.quick_prompt_actions, self.quick_prompts):
+            action.setText(text or "(empty)")
+            action.setEnabled(bool(text))
+
+    def send_quick_prompt(self, number):
+        """A programmable button was clicked (or ⌘1–⌘4 pressed)."""
+        text = self.quick_prompts[number]
+        if text:
+            self.ask(text)
+
+    def edit_quick_prompts(self):
+        dialog = EditQuickPromptsDialog(self.floating_chat if self.floating_chat.isActiveWindow() else self,
+                                        self.quick_prompts)
+        if dialog.exec():
+            self.quick_prompts = dialog.prompts()
+            for number, text in enumerate(self.quick_prompts):
+                self.settings.setValue(f"quick_prompt_{number + 1}", text)
+            self.refresh_quick_prompts()
 
     def toggle_floating_chat(self):
         if self.floating_chat.isVisible():
@@ -596,7 +728,7 @@ class MainWindow(QMainWindow):
             self.docs_label.setText("Using: " + ", ".join(names))
         else:
             self.docs_label.setText("No reference documents. Add notes, guides, PDFs or Word files "
-                                    "(any size) to give Claude more context.")
+                                    "(up to 500 MB) to give Claude more context.")
         self.clear_docs_button.setEnabled(bool(self.documents))
 
     def on_save_instructions(self):

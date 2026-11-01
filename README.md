@@ -68,7 +68,11 @@ may record the screen, and Window Watcher shows instructions:
 1. Double-click **Start Window Watcher.command**. Leave the Terminal window it
    opens running in the background, because closing it quits the app.
 2. Pick a window from the list and click **Watch This Window**.
-3. Type a question at the bottom and press Return.
+3. Type a question at the bottom and press Return. Or click one of the four
+   programmable buttons above the question box (like **What's the answer to
+   this?** or **Explain this**) to send that message in one click, or press
+   **⌘1**–**⌘4**. Click **Edit Buttons…** to type your own text into them.
+   Your buttons are saved for next time.
 4. Optional: type standing instructions (one per line) in the box and click
    **Save Instructions**. Tick **Read alerts aloud** to hear alerts.
 5. Click **Show Chat Window** for a separate chat that floats on top of other
@@ -151,13 +155,18 @@ as `{alert, message, change_summary}`.
 
 This creates `dist/WindowWatcher.dmg` using PyInstaller.
 
-To install a build on your own Mac that keeps its Screen Recording permission
-across updates (needs the free Apple Development certificate you get by
-signing into Xcode with your Apple ID):
+To build and install straight into Applications instead:
 
 ```bash
 ./build_dmg.sh --install
 ```
+
+Both sign the app with a "Window Watcher Signing" certificate that
+`setup_signing.sh` creates the first time. It contains no personal info and is
+kept in its own keychain file in `~/.window-watcher-signing/` (not in this repo
+and not in your login keychain). Because every build has the same signature,
+macOS keeps the Screen Recording permission across updates. If you delete that
+folder, a new certificate is made and you'll need to allow Screen Recording once more.
 
 ## Troubleshooting
 
