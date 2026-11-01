@@ -86,7 +86,8 @@ may record the screen, and Window Watcher shows instructions:
    another app or game is in front. Hiding it takes you back to the app you
    were using. The chat window shows up on every desktop, including over apps
    in full-screen mode, so you can keep a full-screen game visible (and watched)
-   while you chat. Because ⌘⇧C then belongs to Window Watcher everywhere (in
+   while you chat. (While the chat is open this way, Window Watcher's Dock icon
+   steps aside, the way Spotlight's panel works; it comes back when the chat hides.) Because ⌘⇧C then belongs to Window Watcher everywhere (in
    Chrome it normally opens Inspect Element), you can turn this off under
    **View → ⌘⇧C Works in Other Apps**. It then only works inside Window
    Watcher. Apps that block outside shortcuts on purpose still block this one.

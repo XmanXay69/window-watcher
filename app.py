@@ -229,6 +229,7 @@ class FloatingChat(QWidget):
 
     def hideEvent(self, event):
         self.main_window.update_chat_button()
+        self.main_window.restore_dock_icon()
         super().hideEvent(event)
 
     def showEvent(self, event):
@@ -694,6 +695,16 @@ class MainWindow(QMainWindow):
         front = NSWorkspace.sharedWorkspace().frontmostApplication()
         if front is not None and front.processIdentifier() != os.getpid():
             self.previous_app = front
+        # While the chat is up, run as an "accessory" app (like Spotlight does).
+        # macOS only lets accessory apps show a window over another app that's
+        # in full-screen mode. The Dock icon comes back when the chat hides.
+        from AppKit import NSApplicationActivationPolicyAccessory
+        NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        QTimer.singleShot(150, self.bring_up_floating_chat)  # give macOS a moment to switch
+
+    def bring_up_floating_chat(self):
+        """Show the chat in front, ready to type in."""
+        from AppKit import NSApp
         self.floating_chat.show()
         self.floating_chat.raise_()
         if hasattr(NSApp, "activate"):
@@ -702,6 +713,13 @@ class MainWindow(QMainWindow):
             NSApp.activateIgnoringOtherApps_(True)
         self.floating_chat.activateWindow()
         self.floating_chat.question_box.setFocus()
+
+    def restore_dock_icon(self):
+        """Switch back to a normal app (with a Dock icon) after the shortcut's
+        accessory mode. Called whenever the chat window hides."""
+        from AppKit import NSApp, NSApplicationActivationPolicyRegular
+        if NSApp.activationPolicy() != NSApplicationActivationPolicyRegular:
+            NSApp.setActivationPolicy_(NSApplicationActivationPolicyRegular)
 
     def hide_floating_chat(self):
         """Hide the chat and, if ⌘⇧C opened it, go back to the app you were in."""
