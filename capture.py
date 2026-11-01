@@ -62,6 +62,19 @@ def has_screen_recording_permission():
     return bool(Quartz.CGPreflightScreenCaptureAccess())
 
 
+def can_capture_screen():
+    """True if we can really capture windows. macOS's quick permission check
+    is sometimes wrong, so if it says no we also try listing the windows."""
+    if has_screen_recording_permission():
+        return True
+    try:
+        with objc.autorelease_pool():
+            _get_all_windows(on_screen_only=True)
+        return True
+    except CaptureError:
+        return False
+
+
 def request_screen_recording_permission():
     """Ask macOS for permission. The first time, this shows the system prompt
     and adds the app (usually Terminal) to the list in System Settings."""

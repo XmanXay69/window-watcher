@@ -147,6 +147,14 @@ as `{alert, message, change_summary}`.
 
 This creates `dist/WindowWatcher.dmg` using PyInstaller.
 
+To install a build on your own Mac that keeps its Screen Recording permission
+across updates (needs the free Apple Development certificate you get by
+signing into Xcode with your Apple ID):
+
+```bash
+./build_dmg.sh --install
+```
+
 ## Troubleshooting
 
 | Message | Fix |
@@ -155,4 +163,5 @@ This creates `dist/WindowWatcher.dmg` using PyInstaller.
 | "Claude Code isn't logged in" | Run `claude auth login` in Terminal |
 | "too old for this app" | Run `claude update` |
 | "Screen Recording permission is turned off" | Do setup step 4 |
+| Asks for Screen Recording but it's already on | macOS is remembering an older copy. In System Settings → Privacy & Security → Screen & System Audio Recording, select Window Watcher, click **−**, then reopen the app and allow it again |
 | "minimized or on another desktop" | Bring the window onto your current desktop |

@@ -889,28 +889,50 @@ class MainWindow(QMainWindow):
 # Starting the app
 # ---------------------------------------------------------------------------
 
-def explain_missing_permission():
-    """Show how to turn on Screen Recording, then quit."""
+def relaunch_app():
+    """Start a fresh copy of Window Watcher a moment after this one quits.
+    macOS only applies a new Screen Recording permission after a restart."""
+    bundle = Path(sys.executable).resolve().parents[2]  # .../Window Watcher.app
+    subprocess.Popen(["/bin/sh", "-c", 'sleep 1; open -n "$0"', str(bundle)], start_new_session=True)
+
+
+def ask_for_screen_permission():
+    """Explain how to turn on Screen Recording. Returns True once it works,
+    False if you chose to quit."""
     capture.request_screen_recording_permission()  # adds the app to the list in System Settings
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Warning)
-    box.setWindowTitle("Screen Recording permission needed")
-    box.setText("Window Watcher needs permission to see your screen.")
-    # The installed app asks for itself; the script version asks for Terminal.
-    if getattr(sys, "frozen", False):
-        who = "Window Watcher"
-    else:
-        who = "Terminal (or whichever app you started Window Watcher from)"
-    box.setInformativeText(
-        "1. Click “Open System Settings” below.\n"
-        f"2. Under Screen & System Audio Recording, turn on {who}.\n"
-        "3. If macOS asks, choose “Quit & Reopen”. Otherwise, quit it yourself.\n"
-        "4. Start Window Watcher again.")
-    open_button = box.addButton("Open System Settings", QMessageBox.AcceptRole)
-    box.addButton("Quit", QMessageBox.RejectRole)
-    box.exec()
-    if box.clickedButton() == open_button:
-        capture.open_screen_recording_settings()
+    frozen = getattr(sys, "frozen", False)  # True for the installed app, False for the script
+    who = "Window Watcher" if frozen else "Terminal (or whichever app you started Window Watcher from)"
+
+    while True:
+        box = QMessageBox()
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Screen Recording permission needed")
+        box.setText("Window Watcher needs permission to see your screen.")
+        box.setInformativeText(
+            "1. Click “Open System Settings”.\n"
+            f"2. Under Screen & System Audio Recording, turn on {who}.\n"
+            f"3. Click “{'Quit & Reopen' if frozen else 'Quit'}”"
+            f"{'' if frozen else ', quit Terminal, and start Window Watcher again'}.\n\n"
+            f"Already turned on? macOS may be remembering an older copy of the app. "
+            f"Select {who.split(' (')[0]} in that list, click the − button to remove it, "
+            "then do steps 2 and 3 again.")
+        open_button = box.addButton("Open System Settings", QMessageBox.ActionRole)
+        check_button = box.addButton("Check Again", QMessageBox.ActionRole)
+        reopen_button = box.addButton("Quit & Reopen", QMessageBox.AcceptRole) if frozen else None
+        box.addButton("Quit", QMessageBox.RejectRole)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == open_button:
+            capture.open_screen_recording_settings()
+        elif clicked == check_button:
+            if capture.can_capture_screen():
+                return True
+        elif reopen_button is not None and clicked == reopen_button:
+            relaunch_app()
+            return False
+        else:
+            return False
 
 
 def main():
@@ -928,8 +950,7 @@ def main():
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
-    if not capture.has_screen_recording_permission():
-        explain_missing_permission()
+    if not capture.can_capture_screen() and not ask_for_screen_permission():
         return
 
     window = MainWindow()
