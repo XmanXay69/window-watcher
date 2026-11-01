@@ -158,6 +158,7 @@ You can also turn Open at Login on or off from Terminal:
 | `documents.py` | Prepares reference documents (PDF/Word to text, size limits) |
 | `hotkeys.py` | The system-wide ⌘⇧C shortcut (Apple's RegisterEventHotKey) |
 | `menubar.py` | The menu bar icon, its menu, and Open at Login |
+| `theme.py` | Colors (light and dark) and the stylesheet for the app's look |
 | `practice_window.py` | A pretend game for testing |
 | `make_icon.py` | Draws the app icon (`icon.png`, `icon.icns`) |
 

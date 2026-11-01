@@ -39,8 +39,8 @@ from pathlib import Path
 # (This has to be set before Qt is imported.)
 os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio=false")
 
-from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QIcon, QKeySequence, QPalette, QPixmap
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPainterPath, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QFrame, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
@@ -52,6 +52,7 @@ import claude_bridge
 import documents
 import hotkeys
 import menubar
+import theme
 
 # --- Settings you can tweak --------------------------------------------------
 CAPTURE_EVERY_SECONDS = 2.5      # how often to take a screenshot
@@ -60,7 +61,7 @@ SECONDS_AFTER_FAILED_CHECK = 60  # wait this long after a check fails
 KEEP_FRAMES = 4                  # how many different screenshots to keep
 CHAT_MESSAGES_SENT = 10          # how much recent chat goes with each question
 CHANGE_LOG_LENGTH = 8            # how many "what changed" notes to remember
-PREVIEW_WIDTH, PREVIEW_HEIGHT = 300, 190
+PREVIEW_WIDTH, PREVIEW_HEIGHT = 272, 170
 
 # The four programmable buttons start out with these. Click "Edit Buttons…"
 # in the app to change them; your text is saved between launches.
@@ -75,6 +76,22 @@ QUICK_PROMPT_DEFAULTS = [
 # ---------------------------------------------------------------------------
 # Small data holders
 # ---------------------------------------------------------------------------
+
+def rounded(pixmap, radius):
+    """A copy of a picture with rounded corners."""
+    ratio = pixmap.devicePixelRatio()
+    result = QPixmap(pixmap.size())
+    result.setDevicePixelRatio(ratio)
+    result.fill(Qt.transparent)
+    painter = QPainter(result)
+    painter.setRenderHint(QPainter.Antialiasing)
+    path = QPainterPath()
+    path.addRoundedRect(0, 0, pixmap.width() / ratio, pixmap.height() / ratio, radius, radius)
+    painter.setClipPath(path)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+    return result
+
 
 def clock(timestamp):
     """Turn a time.time() number into '14:05:09'."""
@@ -104,6 +121,8 @@ class ChatView(QTextBrowser):
         super().__init__()
         self.messages = messages  # the app's list of ChatMessages
         self.setOpenLinks(False)  # we handle link clicks ourselves
+        self.document().setDefaultStyleSheet("a { color: #8e8e93; text-decoration: none; }")
+        self.document().setDocumentMargin(2)
         self.anchorClicked.connect(self.on_link_clicked)
 
     def on_link_clicked(self, url):
@@ -129,6 +148,7 @@ class QuickPromptBar(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         for number in range(len(QUICK_PROMPT_DEFAULTS)):
             button = QPushButton()
+            button.setObjectName("chip")  # pill-shaped (see theme.py)
             button.clicked.connect(lambda checked=False, n=number: main_window.send_quick_prompt(n))
             grid.addWidget(button, number // columns, number % columns)
             self.buttons.append(button)
@@ -192,7 +212,12 @@ class FloatingChat(QWidget):
         super().__init__(None, Qt.Window | Qt.WindowStaysOnTopHint)
         self.main_window = main_window
         self.setWindowTitle("Window Watcher Chat")
-        self.resize(420, 520)
+        self.setObjectName("root")  # gets the app's background color (theme.py)
+        self.setAttribute(Qt.WA_StyledBackground)  # needed for that on a QWidget subclass
+        # Same seamless top as the main window (no separate title strip).
+        self.setWindowFlag(Qt.ExpandedClientAreaHint, True)
+        self.setWindowFlag(Qt.NoTitleBarBackgroundHint, True)
+        self.resize(440, 560)
 
         self.chat_view = ChatView(main_window.chat)
         # A 2x2 grid of programmable buttons keeps this window narrow.
@@ -201,6 +226,7 @@ class FloatingChat(QWidget):
         self.question_box.setPlaceholderText("Ask about the window…")
         self.question_box.returnPressed.connect(self.on_ask)
         ask_button = QPushButton("Ask")
+        ask_button.setObjectName("primary")
         ask_button.clicked.connect(self.on_ask)
         copy_all_button = QPushButton("Copy All")
         copy_all_button.clicked.connect(main_window.copy_all_chat)
@@ -494,10 +520,14 @@ class MainWindow(QMainWindow):
     # --- Building the window ---------------------------------------------
 
     def build_ui(self):
-        palette = self.palette()
-        self.accent = palette.color(QPalette.Accent).name()
+        self.colors = theme.colors(self.palette())
+        self.accent = self.colors["accent"]
         self.gray = "#8e8e93"  # macOS system gray; readable in light and dark mode
-        self.red = "#ff453a" if palette.color(QPalette.Window).lightness() < 128 else "#d70015"
+        self.red = self.colors["red"]
+        # Modern macOS look: the window's content runs up under the title bar,
+        # so there's no separate gray title strip.
+        self.setWindowFlag(Qt.ExpandedClientAreaHint, True)
+        self.setWindowFlag(Qt.NoTitleBarBackgroundHint, True)
 
         # Menu bar: View > Show/Hide Chat Window, with the keyboard shortcut
         # Cmd+Shift+C. ("Ctrl" in Qt means the Command key on a Mac.)
@@ -527,21 +557,21 @@ class MainWindow(QMainWindow):
         buttons_menu.addSeparator()
         buttons_menu.addAction("Edit Buttons…", self.edit_quick_prompts)
 
-        # Top: the live preview, with the window name, status and buttons.
+        # --- Header card: live preview, window name, status, buttons ---
         self.preview = QLabel("No window yet")
         self.preview.setFixedSize(PREVIEW_WIDTH, PREVIEW_HEIGHT)
         self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setStyleSheet(f"background: {palette.color(QPalette.AlternateBase).name()};"
-                                   f" border-radius: 6px; color: {self.gray};")
+        self.preview.setObjectName("secondary")
 
+        watching_caption = QLabel("WATCHING")
+        watching_caption.setObjectName("caption")
         self.window_label = QLabel("Not watching anything")
+        self.window_label.setObjectName("title")
         self.window_label.setWordWrap(True)
-        self.window_label.setStyleSheet("font-size: 15px; font-weight: 600;")
-        self.status_label = QLabel()
-        self.status_label.setWordWrap(True)
+        self.status_label = QLabel()  # a colored "pill", styled in update_status()
         self.detail_label = QLabel()
+        self.detail_label.setObjectName("secondary")
         self.detail_label.setWordWrap(True)
-        self.detail_label.setStyleSheet(f"color: {self.gray};")
 
         self.pause_button = QPushButton("Pause")
         self.pause_button.clicked.connect(self.on_pause)
@@ -551,55 +581,79 @@ class MainWindow(QMainWindow):
         self.chat_button.clicked.connect(self.toggle_floating_chat)
         self.chat_button.setToolTip("Shortcut: ⌘⇧C")
         top_buttons = QHBoxLayout()
+        top_buttons.setSpacing(8)
         top_buttons.addWidget(self.pause_button)
         top_buttons.addWidget(self.change_button)
         top_buttons.addWidget(self.chat_button)
         top_buttons.addStretch()
 
+        status_row = QHBoxLayout()
+        status_row.addWidget(self.status_label)
+        status_row.addStretch()
         info = QVBoxLayout()
+        info.setSpacing(6)
+        info.addWidget(watching_caption)
         info.addWidget(self.window_label)
-        info.addWidget(self.status_label)
+        info.addLayout(status_row)
         info.addWidget(self.detail_label)
         info.addStretch()
         info.addLayout(top_buttons)
 
-        top = QHBoxLayout()
-        top.addWidget(self.preview)
-        top.addSpacing(12)
-        top.addLayout(info, 1)
+        header = self.make_card()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(14, 14, 18, 14)
+        header_layout.setSpacing(18)
+        header_layout.addWidget(self.preview)
+        header_layout.addLayout(info, 1)
 
-        # Middle: standing instructions.
+        # --- Standing instructions card ---
         self.instructions_box = QPlainTextEdit()
         self.instructions_box.setPlaceholderText(
-            "Standing instructions, one per line. For example:\n"
+            "One per line, for example:\n"
             "Tell me whenever a new message appears\n"
             "Warn me if the health bar gets low")
-        self.instructions_box.setFixedHeight(64)
-        save_button = QPushButton("Save Instructions")
+        self.instructions_box.setFixedHeight(62)
+        save_button = QPushButton("Save")
         save_button.clicked.connect(self.on_save_instructions)
         self.speak_checkbox = QCheckBox("Read alerts aloud")
-        instruction_side = QVBoxLayout()
-        instruction_side.addWidget(save_button)
-        instruction_side.addWidget(self.speak_checkbox)
-        instruction_side.addStretch()
+        alerts = self.make_card()
+        alerts_layout = QVBoxLayout(alerts)
+        alerts_layout.setContentsMargins(16, 12, 16, 12)
+        alerts_layout.addWidget(self.make_caption("STANDING INSTRUCTIONS"))
+        alerts_layout.addWidget(self.instructions_box)
+        alerts_bottom = QHBoxLayout()
+        alerts_bottom.addWidget(self.speak_checkbox)
+        alerts_bottom.addStretch()
+        alerts_bottom.addWidget(save_button)
+        alerts_layout.addLayout(alerts_bottom)
 
-        # Reference documents: extra background info Claude can read.
-        self.add_docs_button = QPushButton("Add Documents…")
+        # --- Reference documents card: extra background info Claude can read ---
+        self.add_docs_button = QPushButton("Add…")
+        self.add_docs_button.setToolTip("Add reference documents (up to 500 MB each)")
         self.add_docs_button.clicked.connect(self.on_add_documents)
         self.clear_docs_button = QPushButton("Remove All")
         self.clear_docs_button.clicked.connect(self.on_clear_documents)
         self.docs_label = QLabel()
+        self.docs_label.setObjectName("secondary")
         self.docs_label.setWordWrap(True)
-        self.docs_label.setStyleSheet(f"color: {self.gray};")
-        docs_row = QHBoxLayout()
-        docs_row.addWidget(self.add_docs_button)
-        docs_row.addWidget(self.docs_label, 1)
-        docs_row.addWidget(self.clear_docs_button)
-        instructions_row = QHBoxLayout()
-        instructions_row.addWidget(self.instructions_box, 1)
-        instructions_row.addLayout(instruction_side)
+        self.docs_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        docs = self.make_card()
+        docs_layout = QVBoxLayout(docs)
+        docs_layout.setContentsMargins(16, 12, 16, 12)
+        docs_layout.addWidget(self.make_caption("REFERENCE DOCUMENTS"))
+        docs_layout.addWidget(self.docs_label, 1)
+        docs_bottom = QHBoxLayout()
+        docs_bottom.addWidget(self.add_docs_button)
+        docs_bottom.addStretch()
+        docs_bottom.addWidget(self.clear_docs_button)
+        docs_layout.addLayout(docs_bottom)
 
-        # Bottom: the chat and the question box.
+        middle = QHBoxLayout()
+        middle.setSpacing(12)
+        middle.addWidget(alerts, 3)
+        middle.addWidget(docs, 2)
+
+        # --- Chat card: the conversation, quick buttons and the question box ---
         self.chat_view = ChatView(self.chat)
         # The pop-out chat window (hidden until you click "Show Chat Window").
         self.floating_chat = FloatingChat(self)
@@ -607,23 +661,65 @@ class MainWindow(QMainWindow):
         self.question_box.setPlaceholderText("Ask about the window, e.g. “What just changed?”")
         self.question_box.returnPressed.connect(self.on_ask)
         ask_button = QPushButton("Ask")
+        ask_button.setObjectName("primary")
         ask_button.clicked.connect(self.on_ask)
         ask_row = QHBoxLayout()
         ask_row.addWidget(self.question_box, 1)
         ask_row.addWidget(ask_button)
 
+        chat_card = self.make_card()
+        chat_layout = QVBoxLayout(chat_card)
+        chat_layout.setContentsMargins(16, 12, 16, 14)
+        chat_layout.setSpacing(10)
+        chat_layout.addWidget(self.make_caption("CHAT"))
+        chat_layout.addWidget(self.chat_view, 1)
+        chat_layout.addWidget(self.make_quick_prompt_bar())
+        chat_layout.addLayout(ask_row)
+
         layout = QVBoxLayout()
-        layout.addLayout(top)
-        layout.addSpacing(6)
-        layout.addLayout(instructions_row)
-        layout.addLayout(docs_row)
-        layout.addWidget(self.chat_view, 1)
-        layout.addWidget(self.make_quick_prompt_bar())
-        layout.addLayout(ask_row)
+        layout.setContentsMargins(16, 10, 16, 16)
+        layout.setSpacing(12)
+        layout.addWidget(header)
+        layout.addLayout(middle)
+        layout.addWidget(chat_card, 1)
         central = QWidget()
+        central.setObjectName("root")
         central.setLayout(layout)
         self.setCentralWidget(central)
+        self.resize(820, 800)
+        self.apply_theme()
         self.refresh_quick_prompts()
+
+    # --- Look ------------------------------------------------------------------
+
+    def make_card(self):
+        """A rounded panel that groups related things (styled in theme.py)."""
+        card = QFrame()
+        card.setObjectName("card")
+        return card
+
+    def make_caption(self, text):
+        """A small gray heading like "CHAT" at the top of a card."""
+        label = QLabel(text)
+        label.setObjectName("caption")
+        return label
+
+    def apply_theme(self):
+        """Apply the colors for light or dark mode to both windows."""
+        self.colors = theme.colors(self.palette())
+        self.accent = self.colors["accent"]
+        self.red = self.colors["red"]
+        self.setStyleSheet(theme.stylesheet(self.colors))
+        self.floating_chat.setStyleSheet(theme.stylesheet(self.colors))
+        self.update_status()
+
+    def changeEvent(self, event):
+        # macOS switched between light and dark mode: recolor.
+        if event.type() in (QEvent.ApplicationPaletteChange, QEvent.ThemeChange):
+            dark = self.palette().color(QPalette.Window).lightness() < 128
+            if hasattr(self, "colors") and dark != self.colors["dark"]:
+                self.apply_theme()
+        super().changeEvent(event)
 
     # --- Startup -------------------------------------------------------------
 
@@ -683,7 +779,8 @@ class MainWindow(QMainWindow):
         self.set_dock_icon(False)
         self.add_chat("note", "Went to sleep. Click the eye in the menu bar to watch a window again.")
         self.update_status()
-        self.menu_icon.update_menu()
+        if self.menu_icon is not None:
+            self.menu_icon.update_menu()
 
     def bring_to_front(self):
         self.set_dock_icon(True)
@@ -730,7 +827,7 @@ class MainWindow(QMainWindow):
 
         body = escape(text).replace("\n", "<br>")
         if role == "note":
-            html = f'<p style="color:{self.gray};">{body}</p>'
+            html = f'<p style="color:{self.gray}; margin-top:6px; margin-bottom:6px;">{body}</p>'
         else:
             name, color = {
                 "user": (f"You · Q{message.number}", None),
@@ -744,9 +841,10 @@ class MainWindow(QMainWindow):
             if reply_to is not None:
                 short = escape(reply_to.text[:60] + ("…" if len(reply_to.text) > 60 else ""))
                 answering = f'<br><span style="color:{self.gray};">↳ Q{reply_to.number}: {short}</span>'
-            details = (f'<span style="color:{self.gray};">{message.time_text()} · '
+            details = (f'<span style="color:{self.gray}; font-size:small;">{message.time_text()} · '
                        f'<a href="copy:{index}">Copy</a></span>')
-            html = f"<p>{name_html} &nbsp;{details}{answering}<br>{body}</p>"
+            html = (f'<p style="margin-top:8px; margin-bottom:8px; line-height:130%;">'
+                    f"{name_html} &nbsp;{details}{answering}<br>{body}</p>")
         self.chat_view.add_html(html)
         self.floating_chat.chat_view.add_html(html)
         return message
@@ -1080,8 +1178,11 @@ class MainWindow(QMainWindow):
     def show_preview(self, path):
         pixmap = QPixmap(str(path))
         if not pixmap.isNull():
-            self.preview.setPixmap(pixmap.scaled(
-                PREVIEW_WIDTH, PREVIEW_HEIGHT, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            ratio = self.devicePixelRatioF()  # draw sharp on Retina screens
+            scaled = pixmap.scaled(int(PREVIEW_WIDTH * ratio), int(PREVIEW_HEIGHT * ratio),
+                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            scaled.setDevicePixelRatio(ratio)
+            self.preview.setPixmap(rounded(scaled, 10))
 
     def forget_frames(self):
         """Delete every screenshot of the current window."""
@@ -1229,15 +1330,21 @@ class MainWindow(QMainWindow):
 
     def update_status(self):
         if self.window is None:
-            state, color = "Idle", self.gray
+            state, active = "Idle", False
         elif self.busy:
             doing = "answering your question" if self.busy_kind == "question" else "checking your alerts"
-            state, color = f"Thinking… ({doing})", self.accent
+            state, active = f"Thinking… ({doing})", True
         elif self.paused:
-            state, color = "Paused", self.gray
+            state, active = "Paused", False
         else:
-            state, color = "Watching", self.accent
-        self.status_label.setText(f'<span style="color:{color};">●</span> {state}')
+            state, active = "Watching", True
+        # A rounded "pill": accent-tinted while active, gray otherwise.
+        c = self.colors
+        self.status_label.setText(f"●  {state}")
+        self.status_label.setStyleSheet(
+            f"background: {c['accent_soft'] if active else c['button']};"
+            f" color: {c['accent'] if active else c['secondary']};"
+            " border-radius: 11px; padding: 3px 11px; font-weight: 600;")
 
         details = []
         if self.capture_problem:
