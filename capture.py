@@ -81,6 +81,14 @@ def request_screen_recording_permission():
     Quartz.CGRequestScreenCaptureAccess()
 
 
+def reset_screen_recording_permission(bundle_id):
+    """Make macOS forget this app's Screen Recording entry and ask again.
+    This fixes the switch looking "on" while belonging to an older copy of
+    the app (macOS then quietly says no)."""
+    subprocess.run(["tccutil", "reset", "ScreenCapture", bundle_id], capture_output=True)
+    request_screen_recording_permission()
+
+
 def open_screen_recording_settings():
     """Open System Settings at Privacy & Security > Screen Recording."""
     subprocess.run(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"])

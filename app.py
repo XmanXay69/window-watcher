@@ -1071,10 +1071,12 @@ def ask_for_screen_permission():
             f"2. Under Screen & System Audio Recording, turn on {who}.\n"
             f"3. Click “{'Quit & Reopen' if frozen else 'Quit'}”"
             f"{'' if frozen else ', quit Terminal, and start Window Watcher again'}.\n\n"
-            f"Already turned on? macOS may be remembering an older copy of the app. "
-            f"Select {who.split(' (')[0]} in that list, click the − button to remove it, "
-            "then do steps 2 and 3 again.")
+            + ("Already turned on? macOS is remembering an older copy of the app. Click "
+               "“Reset Permission”, allow it again, then click “Quit & Reopen”." if frozen else
+               "Already turned on? Select Terminal in that list, click the − button to remove it, "
+               "then do steps 2 and 3 again."))
         open_button = box.addButton("Open System Settings", QMessageBox.ActionRole)
+        reset_button = box.addButton("Reset Permission", QMessageBox.ActionRole) if frozen else None
         check_button = box.addButton("Check Again", QMessageBox.ActionRole)
         reopen_button = box.addButton("Quit & Reopen", QMessageBox.AcceptRole) if frozen else None
         box.addButton("Quit", QMessageBox.RejectRole)
@@ -1082,6 +1084,10 @@ def ask_for_screen_permission():
 
         clicked = box.clickedButton()
         if clicked == open_button:
+            capture.open_screen_recording_settings()
+        elif reset_button is not None and clicked == reset_button:
+            from Foundation import NSBundle
+            capture.reset_screen_recording_permission(NSBundle.mainBundle().bundleIdentifier())
             capture.open_screen_recording_settings()
         elif clicked == check_button:
             if capture.can_capture_screen():

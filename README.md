@@ -155,18 +155,20 @@ as `{alert, message, change_summary}`.
 
 This creates `dist/WindowWatcher.dmg` using PyInstaller.
 
-To build and install straight into Applications instead:
+To build and install straight into Applications on your own Mac instead:
 
 ```bash
 ./build_dmg.sh --install
 ```
 
-Both sign the app with a "Window Watcher Signing" certificate that
-`setup_signing.sh` creates the first time. It contains no personal info and is
-kept in its own keychain file in `~/.window-watcher-signing/` (not in this repo
-and not in your login keychain). Because every build has the same signature,
-macOS keeps the Screen Recording permission across updates. If you delete that
-folder, a new certificate is made and you'll need to allow Screen Recording once more.
+**Why two ways:** macOS remembers Screen Recording permission by the app's
+signature. `--install` signs with your free Apple Development certificate
+(from signing into Xcode with your Apple ID), so every build has the same
+identity and **the permission survives updates**. That certificate's name
+contains your Apple ID email, so those builds stay on your Mac. The shared DMG
+is signed "ad hoc" (no certificate, no personal info), so macOS treats each
+release as a new app: after installing an update from GitHub, click **Reset
+Permission** in the app's permission message and allow it again.
 
 ## Troubleshooting
 
@@ -176,5 +178,5 @@ folder, a new certificate is made and you'll need to allow Screen Recording once
 | "Claude Code isn't logged in" | Run `claude auth login` in Terminal |
 | "too old for this app" | Run `claude update` |
 | "Screen Recording permission is turned off" | Do setup step 4 |
-| Asks for Screen Recording but it's already on | macOS is remembering an older copy. In System Settings → Privacy & Security → Screen & System Audio Recording, select Window Watcher, click **−**, then reopen the app and allow it again |
+| Asks for Screen Recording but it's already on | macOS is remembering an older copy. Click **Reset Permission** in the app's message, allow it again, then click **Quit & Reopen** |
 | "minimized or on another desktop" | Bring the window onto your current desktop |
