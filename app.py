@@ -932,23 +932,22 @@ class MainWindow(QMainWindow):
         self.settings.setValue("global_shortcut", "true" if on else "false")
 
     def on_global_shortcut(self):
-        """⌘⇧C was pressed, whichever app is in front. It shows or hides both
-        windows together: the main window and the floating chat."""
+        """⌘⇧C was pressed, whichever app is in front. It switches to the small
+        floating chat: the big main window disappears and the chat appears.
+        Pressing it again hides the chat too."""
         from AppKit import NSApp, NSWorkspace
         if self.dormant:
             self.wake()  # asleep: same as clicking the menu bar icon
             return
-        if (self.isVisible() or self.floating_chat.isVisible()) and NSApp.isActive():
-            self.hide()  # just hides it; closing the window would put the app to sleep
+        if self.floating_chat.isVisible() and NSApp.isActive():
             self.hide_floating_chat()
             return
-        # Remember where you were, so hiding the windows can take you back there.
+        # Remember where you were, so hiding the chat can take you back there.
         front = NSWorkspace.sharedWorkspace().frontmostApplication()
         if front is not None and front.processIdentifier() != os.getpid():
             self.previous_app = front
-        self.show()  # the main window opens on the desktop you're on
-        self.raise_()
-        self.bring_up_floating_chat()  # the chat goes on top, ready to type in
+        self.hide()  # just hides the big window; closing it would put the app to sleep
+        self.bring_up_floating_chat()  # the small chat appears, ready to type in
 
     def bring_up_floating_chat(self):
         """Show the chat in front, ready to type in."""
