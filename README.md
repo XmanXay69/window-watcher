@@ -79,7 +79,7 @@ may record the screen, and Window Watcher shows instructions:
    an app in full-screen mode, instead of jumping to another desktop.
    Window Watcher is a menu bar app: it never has a Dock icon or menus at the
    top of the screen (and isn't in ⌘Tab). Everything is in the eye's menu
-   while it's awake: Show Window Watcher, Show Chat, Change Window, **Quick
+   while it's awake: Show Window Watcher, Show Windows (⌘⇧C), Change Window, **Quick
    Buttons** (and Edit Buttons), **⌘⇧C Works in Other Apps**, **Go to Sleep**,
    **Open at Login** (keeps the eye in the menu bar after a restart), and
    **Quit**. Closing the main window also puts it to sleep: screenshots stop
@@ -95,9 +95,10 @@ may record the screen, and Window Watcher shows instructions:
    apps. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
    for the whole conversation. **Hide** (or the window's close button) hides it.
-   Shortcut: press **⌘⇧C** (Command-Shift-C) to show or hide it, even while
-   another app or game is in front. Hiding it takes you back to the app you
-   were using. The chat window shows up on every desktop, including over apps
+   Shortcut: press **⌘⇧C** (Command-Shift-C) to show or hide both windows
+   (the main window and this chat) together, even while another app or game is
+   in front. They open over whatever you're on, with the cursor in the chat box,
+   and hiding them takes you back to the app you were using. The chat window shows up on every desktop, including over apps
    in full-screen mode, so you can keep a full-screen game visible (and watched)
    while you chat. Because ⌘⇧C then belongs to Window Watcher everywhere (in
    Chrome it normally opens Inspect Element), you can turn this off with

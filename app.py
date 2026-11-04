@@ -548,7 +548,7 @@ class MainWindow(QMainWindow):
         self.chat_action = QAction("Show Chat Window", self)
         self.chat_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         self.chat_action.setShortcutContext(Qt.ApplicationShortcut)
-        self.chat_action.triggered.connect(self.toggle_floating_chat)
+        self.chat_action.triggered.connect(self.on_global_shortcut)
         # ⌘⇧C can also work while other apps are in front (see hotkeys.py).
         self.global_shortcut_action = QAction("⌘⇧C Works in Other Apps", self)
         self.global_shortcut_action.setCheckable(True)
@@ -932,19 +932,23 @@ class MainWindow(QMainWindow):
         self.settings.setValue("global_shortcut", "true" if on else "false")
 
     def on_global_shortcut(self):
-        """⌘⇧C was pressed, whichever app is in front."""
+        """⌘⇧C was pressed, whichever app is in front. It shows or hides both
+        windows together: the main window and the floating chat."""
         from AppKit import NSApp, NSWorkspace
         if self.dormant:
             self.wake()  # asleep: same as clicking the menu bar icon
             return
-        if self.floating_chat.isVisible() and NSApp.isActive():
+        if (self.isVisible() or self.floating_chat.isVisible()) and NSApp.isActive():
+            self.hide()  # just hides it; closing the window would put the app to sleep
             self.hide_floating_chat()
             return
-        # Remember where you were, so hiding the chat can take you back there.
+        # Remember where you were, so hiding the windows can take you back there.
         front = NSWorkspace.sharedWorkspace().frontmostApplication()
         if front is not None and front.processIdentifier() != os.getpid():
             self.previous_app = front
-        self.bring_up_floating_chat()
+        self.show()  # the main window opens on the desktop you're on
+        self.raise_()
+        self.bring_up_floating_chat()  # the chat goes on top, ready to type in
 
     def bring_up_floating_chat(self):
         """Show the chat in front, ready to type in."""
