@@ -264,9 +264,22 @@ class FloatingChat(QWidget):
         bottom_row.addStretch()
         bottom_row.addWidget(hide_button)
 
+        # Top line: which window is being watched, and a link to change it.
+        self.watching_label = QLabel()
+        self.watching_label.setObjectName("secondary")
+        self.watching_label.setStyleSheet("font-size: 12px;")
+        change_button = QPushButton("Change…")
+        change_button.setObjectName("link")
+        change_button.setToolTip("Watch a different window")
+        change_button.clicked.connect(main_window.change_window_from_chat)
+        top_row = QHBoxLayout()
+        top_row.addWidget(self.watching_label, 1)
+        top_row.addWidget(change_button)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 12)
         layout.setSpacing(8)
+        layout.addLayout(top_row)
         layout.addWidget(self.chat_view, 1)
         layout.addWidget(self.prompt_bar)
         layout.addLayout(ask_row)
@@ -1090,6 +1103,15 @@ class MainWindow(QMainWindow):
         if picker.exec() and picker.chosen:
             self.start_watching(picker.chosen)
 
+    def change_window_from_chat(self):
+        """The floating chat's "Change…" link: pick a new window right there,
+        without bringing back the big window."""
+        picker = WindowPicker(self.floating_chat)
+        picker.setStyleSheet(theme.stylesheet(self.colors))  # keep the app's look
+        if picker.exec() and picker.chosen:
+            self.start_watching(picker.chosen)
+            self.floating_chat.question_box.setFocus()
+
     def start_watching(self, window):
         self.generation += 1  # results from the old window will be ignored
         self.forget_frames()
@@ -1376,6 +1398,8 @@ class MainWindow(QMainWindow):
             details.append(f"{len(self.pending_questions)} question(s) waiting")
         self.detail_label.setText(" · ".join(details))
         self.change_button.setText("Change Window…" if self.window else "Choose Window…")
+        self.floating_chat.watching_label.setText(
+            f"Watching: {self.window.label()}" if self.window else "Not watching a window")
         self.pause_button.setEnabled(self.window is not None)
 
     # --- Quitting ----------------------------------------------------------------

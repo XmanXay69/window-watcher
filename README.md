@@ -92,7 +92,8 @@ may record the screen, and Window Watcher shows instructions:
 4. Optional: type standing instructions (one per line) in the box and click
    **Save**. Tick **Read alerts aloud** to hear alerts.
 5. Click **Show Chat** for a separate chat that floats on top of other
-   apps. Answers are labeled with the question they answer (Q1, Q2…). Select
+   apps. Its top line shows which window is being watched; click **Change…**
+   there to watch a different one. Answers are labeled with the question they answer (Q1, Q2…). Select
    any text to copy it, click **Copy** next to a message, or click **Copy All**
    for the whole conversation. **Hide** (or the window's close button) hides it.
    Shortcut: press **⌘⇧C** (Command-Shift-C), even while another app or game
