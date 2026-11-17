@@ -130,6 +130,13 @@ You can also turn Open at Login on or off from Terminal:
 "/Applications/Window Watcher.app/Contents/MacOS/Window Watcher" --open-at-login=on
 ```
 
+**Answers** are short: Claude gives just the answer and only explains when you
+ask (say "explain", "why" or "how"). If the screen shows several questions or
+items, it answers them in the order they appear, top to bottom, numbered.
+
+**Moving windows:** drag either window by any empty spot (not just the top
+edge). Both windows remember where you put them.
+
 ## Good to know
 
 - **The window must be on your current desktop.** macOS can't capture a

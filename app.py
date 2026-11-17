@@ -77,6 +77,15 @@ QUICK_PROMPT_DEFAULTS = [
 # Small data holders
 # ---------------------------------------------------------------------------
 
+def drag_window(widget, event):
+    """Let you move a window by dragging any empty spot in it (the app has no
+    separate title bar to grab). Buttons, text boxes and the chat still work
+    normally, because they handle their own clicks first."""
+    if event.button() == Qt.LeftButton and widget.windowHandle() is not None:
+        widget.windowHandle().startSystemMove()
+        event.accept()
+
+
 def set_space_behavior(widget, *behaviors):
     """Tell macOS which desktops (Spaces) a window may appear on. Window
     Watcher uses this so its windows open over whatever you're looking at,
@@ -233,6 +242,9 @@ class FloatingChat(QWidget):
         self.setWindowFlag(Qt.ExpandedClientAreaHint, True)
         self.setWindowFlag(Qt.NoTitleBarBackgroundHint, True)
         self.resize(360, 460)
+        saved = main_window.settings.value("chat_geometry")
+        if saved is not None:
+            self.restoreGeometry(saved)  # put it back where you left it
 
         self.chat_view = ChatView(main_window.chat)
         # A 2x2 grid of smaller programmable buttons keeps this window narrow.
@@ -289,8 +301,12 @@ class FloatingChat(QWidget):
         self.main_window.ask(self.question_box.text())
         self.question_box.clear()
 
+    def mousePressEvent(self, event):
+        drag_window(self, event)
+
     def hideEvent(self, event):
         self.main_window.update_chat_button()
+        self.main_window.settings.setValue("chat_geometry", self.saveGeometry())  # remember where it was
         super().hideEvent(event)
 
     def showEvent(self, event):
@@ -714,6 +730,9 @@ class MainWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
         self.resize(640, 660)
+        saved = self.settings.value("main_geometry")
+        if saved is not None:
+            self.restoreGeometry(saved)  # put it back where you left it
         self.attach_shortcuts(self)
         self.attach_shortcuts(self.floating_chat)
         self.apply_theme()
@@ -822,6 +841,13 @@ class MainWindow(QMainWindow):
     def change_window_from_menu_bar(self):
         self.bring_to_front()
         self.on_change_window()
+
+    def mousePressEvent(self, event):
+        drag_window(self, event)
+
+    def hideEvent(self, event):
+        self.settings.setValue("main_geometry", self.saveGeometry())  # remember where it was
+        super().hideEvent(event)
 
     def make_menu_bar_app(self):
         """Run as an "accessory" app: no Dock icon and no menus at the top of
