@@ -134,6 +134,11 @@ You can also turn Open at Login on or off from Terminal:
 ask (say "explain", "why" or "how"). If the screen shows several questions or
 items, it answers them in the order they appear, top to bottom, numbered.
 
+**Changing the chat shortcut:** click the eye, choose **Change Shortcut…**,
+and press the keys you want (for example ⌥Space or ⌃⌘K). It needs at least
+one of ⌘, ⌥ or ⌃, and ⌘1–⌘4 are taken by the quick buttons. It works
+everywhere, just like ⌘⇧C, and is remembered. **Reset to ⌘⇧C** puts it back.
+
 **Moving windows:** drag either window by any empty spot (not just the top
 edge). Both windows remember where you put them.
 

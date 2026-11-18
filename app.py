@@ -43,7 +43,7 @@ from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPainterPath, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QFrame, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
+    QFrame, QKeySequenceEdit, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
     QTextBrowser, QVBoxLayout, QWidget,
 )
 
@@ -62,6 +62,10 @@ KEEP_FRAMES = 4                  # how many different screenshots to keep
 CHAT_MESSAGES_SENT = 10          # how much recent chat goes with each question
 CHANGE_LOG_LENGTH = 8            # how many "what changed" notes to remember
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 216, 135
+
+# The shortcut that shows the small chat (you can change it: eye menu >
+# Change Shortcut…). Qt writes the Command key as "Ctrl" and Control as "Meta".
+DEFAULT_CHAT_SHORTCUT = "Ctrl+Shift+C"
 
 # The four programmable buttons start out with these. Click "Edit Buttons…"
 # in the app to change them; your text is saved between launches.
@@ -239,6 +243,38 @@ class EditQuickPromptsDialog(QDialog):
         return [box.text().strip() for box in self.boxes]
 
 
+class ShortcutDialog(QDialog):
+    """A small box that records the key combination you press."""
+
+    def __init__(self, parent, current):
+        super().__init__(parent)
+        self.setWindowTitle("Chat Shortcut")
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Press the keys you want to use to show and hide the chat.\n"
+                                "Use at least one of ⌘, ⌥ or ⌃ (for example ⌥Space or ⌃⌘K)."))
+        self.recorder = QKeySequenceEdit(QKeySequence(current))
+        self.recorder.setMaximumSequenceLength(1)  # one key combination, not a sequence
+        layout.addWidget(self.recorder)
+        buttons = QHBoxLayout()
+        reset_button = QPushButton("Reset to ⌘⇧C")
+        reset_button.clicked.connect(lambda: self.recorder.setKeySequence(QKeySequence(DEFAULT_CHAT_SHORTCUT)))
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        save_button = QPushButton("Save")
+        save_button.setObjectName("primary")
+        save_button.setDefault(True)
+        save_button.clicked.connect(self.accept)
+        buttons.addWidget(reset_button)
+        buttons.addStretch()
+        buttons.addWidget(cancel_button)
+        buttons.addWidget(save_button)
+        layout.addLayout(buttons)
+
+    def shortcut(self):
+        """What you pressed, written Qt's way (like "Ctrl+Shift+C")."""
+        return self.recorder.keySequence().toString(QKeySequence.PortableText)
+
+
 class FloatingChat(QWidget):
     """A separate chat window that stays on top of other apps, so you can
     keep it next to the window you're watching. Closing it just hides it."""
@@ -272,8 +308,8 @@ class FloatingChat(QWidget):
         copy_all_button.setObjectName("link")  # small text button (theme.py)
         copy_all_button.clicked.connect(main_window.copy_all_chat)
         hide_button = QPushButton("Hide")
-        hide_button.setToolTip("Shortcut: ⌘⇧C")
         hide_button.clicked.connect(main_window.hide_floating_chat)
+        self.hide_button = hide_button  # its tooltip shows the chat shortcut
 
         ask_row = QHBoxLayout()
         ask_row.addWidget(self.question_box, 1)
@@ -529,6 +565,7 @@ class MainWindow(QMainWindow):
         self.quick_prompts = [str(self.settings.value(f"quick_prompt_{n + 1}", default))
                               for n, default in enumerate(QUICK_PROMPT_DEFAULTS)]
         self.prompt_bars = []         # every QuickPromptBar on screen
+        self.chat_shortcut = str(self.settings.value("chat_shortcut", DEFAULT_CHAT_SHORTCUT))
         self.question_count = 0
 
         self.instructions = []        # standing instructions, one per line
@@ -552,8 +589,9 @@ class MainWindow(QMainWindow):
         # The system-wide ⌘⇧C. On by default; turn it off in the View menu.
         self.previous_app = None  # the app you were in before ⌘⇧C opened the chat
         try:
-            self.global_hotkey = hotkeys.GlobalHotKey(hotkeys.KEY_C, hotkeys.COMMAND | hotkeys.SHIFT,
-                                                      self.on_global_shortcut)
+            key_code, modifiers = (hotkeys.carbon_combo(self.chat_shortcut)
+                                   or hotkeys.carbon_combo(DEFAULT_CHAT_SHORTCUT))
+            self.global_hotkey = hotkeys.GlobalHotKey(key_code, modifiers, self.on_global_shortcut)
         except OSError as error:
             self.global_hotkey = None
             print(error)
@@ -586,7 +624,7 @@ class MainWindow(QMainWindow):
         # (see attach_shortcuts) and also listed in the eye's menu (menubar.py).
         # ("Ctrl" in Qt means the Command key on a Mac.)
         self.chat_action = QAction("Show Chat Window", self)
-        self.chat_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        self.chat_action.setShortcut(QKeySequence(self.chat_shortcut))
         self.chat_action.setShortcutContext(Qt.ApplicationShortcut)
         self.chat_action.triggered.connect(self.on_global_shortcut)
         # ⌘⇧C can also work while other apps are in front (see hotkeys.py).
@@ -624,7 +662,6 @@ class MainWindow(QMainWindow):
         self.change_button.clicked.connect(self.on_change_window)
         self.chat_button = QPushButton("Show Chat")
         self.chat_button.clicked.connect(self.toggle_floating_chat)
-        self.chat_button.setToolTip("Shortcut: ⌘⇧C")
         top_buttons = QHBoxLayout()
         top_buttons.setSpacing(8)
         top_buttons.addWidget(self.pause_button)
@@ -746,6 +783,7 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(saved)  # put it back where you left it
         self.attach_shortcuts(self)
         self.attach_shortcuts(self.floating_chat)
+        self.update_shortcut_labels()
         self.apply_theme()
         self.refresh_quick_prompts()
 
@@ -968,13 +1006,58 @@ class MainWindow(QMainWindow):
 
     # --- The system-wide shortcut ---------------------------------------------
 
+    def shortcut_label(self):
+        """The chat shortcut written with Mac symbols, like ⇧⌘C."""
+        return QKeySequence(self.chat_shortcut).toString(QKeySequence.NativeText)
+
+    def update_shortcut_labels(self):
+        """Show the current chat shortcut everywhere it's mentioned."""
+        label = self.shortcut_label()
+        self.global_shortcut_action.setText(f"{label} Works in Other Apps")
+        self.chat_button.setToolTip(f"Shortcut: {label}")
+        self.floating_chat.hide_button.setToolTip(f"Shortcut: {label}")
+        if self.menu_icon is not None:
+            self.menu_icon.show_chat_action.setText(f"Show Chat  ({label})")
+
+    def change_chat_shortcut(self):
+        """Eye menu > Change Shortcut…: record a new key combination."""
+        dialog = ShortcutDialog(self.floating_chat if self.floating_chat.isVisible() else None,
+                                self.chat_shortcut)
+        dialog.setStyleSheet(theme.stylesheet(self.colors))
+        self.activate_app()
+        if not dialog.exec():
+            return
+        new = dialog.shortcut()
+        combo = hotkeys.carbon_combo(new) if new else None
+        if combo is None:
+            self.add_chat("error", "That key can't be used for the shortcut. Try a letter, number, "
+                                   "Space or F-key together with ⌘, ⌥ or ⌃.")
+            return
+        if not combo[1] & (hotkeys.COMMAND | hotkeys.OPTION | hotkeys.CONTROL):
+            self.add_chat("error", "The shortcut needs at least one of ⌘, ⌥ or ⌃, "
+                                   "so it doesn't get in the way of normal typing.")
+            return
+        if new in (f"Ctrl+{n}" for n in range(1, 5)):
+            self.add_chat("error", "⌘1–⌘4 are already used by the quick buttons. Pick another shortcut.")
+            return
+        if self.global_hotkey is not None and not self.global_hotkey.change(*combo):
+            self.add_chat("error", f"Another app already uses {QKeySequence(new).toString(QKeySequence.NativeText)} "
+                                   "everywhere. Pick another shortcut.")
+            self.global_hotkey.change(*hotkeys.carbon_combo(self.chat_shortcut))  # keep the old one
+            return
+        self.chat_shortcut = new
+        self.settings.setValue("chat_shortcut", new)
+        self.chat_action.setShortcut(QKeySequence(new))
+        self.update_shortcut_labels()
+        self.add_chat("note", f"The chat shortcut is now {self.shortcut_label()}.")
+
     def set_global_shortcut(self, on):
         """Turn the system-wide ⌘⇧C on or off (from the View menu)."""
         if self.global_hotkey is None:
             return
         if on and not self.global_hotkey.turn_on():
-            self.add_chat("error", "Another app is already using ⌘⇧C everywhere, so it only "
-                                   "works inside Window Watcher.")
+            self.add_chat("error", f"Another app is already using {self.shortcut_label()} everywhere, "
+                                   "so it only works inside Window Watcher.")
             self.global_shortcut_action.setChecked(False)
             return
         if not on:
@@ -1568,6 +1651,7 @@ def main():
     window = MainWindow()  # created hidden and asleep
     window.menu_icon = menubar.MenuBarIcon(window)
     window.menu_icon.show()
+    window.update_shortcut_labels()  # put the chat shortcut in the eye menu's labels
     window.make_menu_bar_app()  # just the eye in the menu bar, no Dock icon
     report_unexpected_errors(window)
     app.aboutToQuit.connect(window.shutdown)

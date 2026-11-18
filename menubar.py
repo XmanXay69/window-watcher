@@ -73,7 +73,8 @@ class MenuBarIcon(QSystemTrayIcon):
         # The menu shown while awake.
         self.menu = QMenu()
         self.menu.addAction("Show Window Watcher", main_window.bring_to_front)
-        self.menu.addAction("Show Chat  (⌘⇧C)", main_window.on_global_shortcut)
+        # (Its label shows your chat shortcut; see update_shortcut_labels in app.py.)
+        self.show_chat_action = self.menu.addAction("Show Chat", main_window.on_global_shortcut)
         self.menu.addAction("Change Window…", main_window.change_window_from_menu_bar)
         # The programmable buttons (⌘1–⌘4) and their editor.
         buttons_menu = self.menu.addMenu("Quick Buttons")
@@ -82,6 +83,7 @@ class MenuBarIcon(QSystemTrayIcon):
         buttons_menu.addSeparator()
         buttons_menu.addAction("Edit Buttons…", main_window.edit_quick_prompts)
         self.menu.addAction(main_window.global_shortcut_action)  # "⌘⇧C Works in Other Apps"
+        self.menu.addAction("Change Shortcut…", main_window.change_chat_shortcut)
         self.menu.addSeparator()
         self.menu.addAction("Go to Sleep", main_window.go_dormant)
         self.login_action = self.menu.addAction("Open at Login", self.toggle_open_at_login)

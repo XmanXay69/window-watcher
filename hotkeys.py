@@ -22,6 +22,35 @@ carbon = ctypes.CDLL("/System/Library/Frameworks/Carbon.framework/Carbon")
 KEY_C = 8
 COMMAND = 1 << 8
 SHIFT = 1 << 9
+OPTION = 1 << 11
+CONTROL = 1 << 12
+
+# Mac key codes for the keys you can use in a shortcut (US keyboard layout).
+# Qt names keys by character; Carbon wants these numbers.
+MAC_KEY_CODES = {
+    "A": 0, "S": 1, "D": 2, "F": 3, "H": 4, "G": 5, "Z": 6, "X": 7, "C": 8, "V": 9,
+    "B": 11, "Q": 12, "W": 13, "E": 14, "R": 15, "Y": 16, "T": 17, "1": 18, "2": 19,
+    "3": 20, "4": 21, "6": 22, "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28,
+    "0": 29, "]": 30, "O": 31, "U": 32, "[": 33, "I": 34, "P": 35, "L": 37, "J": 38,
+    "'": 39, "K": 40, ";": 41, "\\": 42, ",": 43, "/": 44, "N": 45, "M": 46, ".": 47,
+    "`": 50, "Space": 49, "Return": 36, "Tab": 48,
+    "F1": 122, "F2": 120, "F3": 99, "F4": 118, "F5": 96, "F6": 97, "F7": 98,
+    "F8": 100, "F9": 101, "F10": 109, "F11": 103, "F12": 111,
+}
+
+
+def carbon_combo(portable_text):
+    """Turn a Qt shortcut like "Ctrl+Shift+C" (Qt's "Ctrl" is the Command key
+    on a Mac, and "Meta" is the Control key) into Carbon's (key code, modifiers).
+    Returns None for keys we don't know."""
+    *modifier_names, key = portable_text.split("+") if portable_text != "+" else ["+"]
+    if key not in MAC_KEY_CODES:
+        return None
+    flags = {"Ctrl": COMMAND, "Shift": SHIFT, "Alt": OPTION, "Meta": CONTROL}
+    modifiers = 0
+    for name in modifier_names:
+        modifiers |= flags.get(name, 0)
+    return MAC_KEY_CODES[key], modifiers
 
 
 def _four_letters(text):
@@ -99,3 +128,11 @@ class GlobalHotKey:
         if self.hotkey_ref:
             carbon.UnregisterEventHotKey(self.hotkey_ref)
             self.hotkey_ref = None
+
+    def change(self, key_code, modifiers):
+        """Switch to a different key combination. Returns False if another
+        app already uses the new one everywhere."""
+        was_on = self.hotkey_ref is not None
+        self.turn_off()
+        self.key_code, self.modifiers = key_code, modifiers
+        return self.turn_on() if was_on else True
