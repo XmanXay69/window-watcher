@@ -39,7 +39,7 @@ from pathlib import Path
 # (This has to be set before Qt is imported.)
 os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio=false")
 
-from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence, QPainter, QPainterPath, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -144,10 +144,21 @@ class ChatView(QTextBrowser):
     def __init__(self, messages):
         super().__init__()
         self.messages = messages  # the app's list of ChatMessages
-        self.setOpenLinks(False)  # we handle link clicks ourselves
+        self.setOpenLinks(False)  # we handle link clicks ourselves (below)
         self.document().setDefaultStyleSheet("a { color: #8e8e93; text-decoration: none; }")
         self.document().setDocumentMargin(2)
-        self.anchorClicked.connect(self.on_link_clicked)
+
+    def mouseReleaseEvent(self, event):
+        # Handle "Copy" when the mouse button is released over it.
+        # (Qt normally also needs the press, but when Window Watcher is in the
+        # background macOS uses that press just to bring the window forward,
+        # which made the first click on a link do nothing.)
+        link = self.anchorAt(event.position().toPoint())
+        if link and event.button() == Qt.LeftButton:
+            self.on_link_clicked(QUrl(link))
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def on_link_clicked(self, url):
         # Links look like "copy:5", meaning "copy message number 5".
@@ -1506,6 +1517,28 @@ def ask_for_screen_permission():
             return False
 
 
+def report_unexpected_errors(window):
+    """Normally an error inside a button click vanishes without a trace in the
+    installed app. This saves it to ~/Library/Logs/Window Watcher.log and
+    shows a short note in the chat, so problems can be found and fixed."""
+    import traceback
+    log_path = Path.home() / "Library" / "Logs" / "Window Watcher.log"
+
+    def handler(kind, error, trace):
+        details = "".join(traceback.format_exception(kind, error, trace))
+        try:
+            with open(log_path, "a") as log:
+                log.write(f"--- {datetime.now():%Y-%m-%d %H:%M:%S}\n{details}\n")
+        except OSError:
+            pass
+        try:
+            window.add_chat("error", f"Something went wrong: {error} (details saved to {log_path})")
+        except Exception:
+            pass
+
+    sys.excepthook = handler
+
+
 def main():
     # One-time command, same as the menu's "Open at Login" item:
     #   "Window Watcher" --open-at-login=on   (or =off)
@@ -1536,6 +1569,7 @@ def main():
     window.menu_icon = menubar.MenuBarIcon(window)
     window.menu_icon.show()
     window.make_menu_bar_app()  # just the eye in the menu bar, no Dock icon
+    report_unexpected_errors(window)
     app.aboutToQuit.connect(window.shutdown)
     if "--wake" in sys.argv:  # reopened after granting Screen Recording
         QTimer.singleShot(300, window.wake)
